@@ -1,0 +1,9 @@
+pyomo
+pandas
+numpy
+scipy
+matplotlib
+
+[dev]
+pytest
+pytest-cov

@@ -1,0 +1,206 @@
+Metadata-Version: 2.4
+Name: biorefinery-scheduling
+Version: 0.0.1
+Summary: Modularized biorefinery scheduling and MPC toolkit (refactored subset)
+Author: Refactor Contributor
+License: Proprietary / Academic
+Keywords: pyomo,optimization,scheduling,biorefinery,MPC,GDP
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: pyomo
+Requires-Dist: pandas
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: matplotlib
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+
+# Biorefinery Scheduling & MPC (Subset Cleanup)
+
+Este fork reorganiza y limpia el subconjunto de interés del repositorio original para enfocarse en los modelos de fermentación, scheduling y control (MPC) de una biorefinería.
+
+## Objetivo
+Proveer una base clara y reproducible para:
+- Construir el modelo (Pyomo + DAE + GDP cuando aplique)
+- Ejecutar un caso de scheduling + dinámica + control MPC
+- Extender con escenarios y análisis posteriores
+
+## Estructura Actual (fase 1 de refactor)
+```
+biorefinery/
+  src/biorefinery/
+    models/            # (Futuro) Modelos modulares fermentación, hidrólisis, scheduling
+    optimization/      # (Futuro) Métodos de solución, inicialización, estrategias GDP
+    plotting/          # (Futuro) Funciones de graficación
+  data/
+    raw/               # CSV originales (copiados desde biorefinery_models)
+  experiments/
+    scenarios/         # Archivos JSON de condiciones iniciales + index.csv generado
+  scripts/
+    run_mpc.py         # Wrapper que ejecuta el script legado
+  results/
+    figures/           # Resultados gráficos
+  docs/
+requirements.txt       # Dependencias mínimas
+biorefinery_models/    # Código original (legacy fuente de verdad temporal)
+functions/             # Utilidades originales (se irá seleccionando lo necesario)
+```
+
+## Instalación
+Recomendado: entorno virtual Python 3.9–3.11.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .[dev]
+```
+
+Si solo se desea el entorno mínimo sin extras de desarrollo:
+```powershell
+pip install -e .
+```
+
+## Ejecución Rápida (Temporal)
+Mientras se completa la migración, el script original se ejecuta directamente:
+```powershell
+python biorefinery_models/Fermentation_Scheduling_and_MPC.py
+```
+Nota: Puede requerir solvers externos (ej. `ipopt`). Si no hay solver MINLP disponible se activa la cadena de fallback (intento GAMS->solver, luego solver directo, luego ipopt si continuo). 
+
+Ejecución futura (interfaz modular prevista):
+```powershell
+python -m biorefinery.scripts.run_mpc --scenario base
+```
+
+## Estado del Refactor (Resumen)
+- Extracción modular de neighborhoods, evaluación, DSDA, solver fallback y reformulación externa.
+- Logging centralizado (`biorefinery.logging_config`).
+- Pruebas unitarias iniciales (neighborhoods, line search) bajo `tests/`.
+- `extvars_gdp_to_mip` es actualmente un stub (passthrough) documentado en `docs/ARCHITECTURE.md`.
+- Nuevo builder incremental de modelo de fermentación (`biorefinery.models.fermentation.build_fermentation_model`) para migrar gradualmente la lógica DAE.  
+  *Flag `include_kinetics=True` añade parámetros cinéticos (rendimientos, qmax, constantes de inhibición, parámetros pH) y variables de tasas `q` y `R` con constraints estequiométricos stub. Flag adicional `detailed_kinetics=True` (requiere `include_kinetics=True`) activa expresiones completas de inhibición para glucosa y xilosa (pH Gauss + inhibiciones cruzadas). Nuevos componentes añadidos: balances diferenciales iniciales para G, X, Eth; parámetro mutable `route_config`; argumento `initial_concentrations`; helper `set_route_activation` para exploración DSDA.*
+    *Flag `include_kinetics=True` añade parámetros cinéticos (rendimientos, qmax, constantes de inhibición, parámetros pH) y variables de tasas `q` y `R` con constraints estequiométricos stub. Flag adicional `detailed_kinetics=True` (requiere `include_kinetics=True`) activa expresiones completas de inhibición para glucosa y xilosa (pH Gauss + inhibiciones cruzadas). Nuevos componentes añadidos: balances diferenciales iniciales para G, X, Eth y luego extendidos a F, HMF, ACT; parámetro mutable `route_config`; argumento `initial_concentrations`; helpers `set_route_activation` y `get_route_external_variables` para exploración y extracción DSDA.*
+
+## Ejecutar Pruebas
+Después de instalar con extras de desarrollo:
+```powershell
+pytest
+```
+Para mayor detalle de cobertura:
+```powershell
+pytest --cov=biorefinery --cov-report=term-missing
+```
+
+## Logging
+Por defecto nivel INFO a stdout. Para elevar a DEBUG:
+```python
+from biorefinery.logging_config import set_level
+set_level("DEBUG")
+```
+O establecer variable de entorno antes de ejecutar (en PowerShell):
+```powershell
+$env:BIOREF_LOG_LEVEL = "DEBUG"; python biorefinery_models/Fermentation_Scheduling_and_MPC.py
+```
+
+## Configuración Centralizada
+El módulo `biorefinery.config` unifica parámetros de ejecución:
+- Solver NLP primario: `BIOREF_SOLVER_NLP` (default: ipopt)
+- Solver MINLP primario: `BIOREF_SOLVER_MINLP` (default: bonmin)
+- Time limit (segundos): `BIOREF_TIME_LIMIT` (default: 3600)
+- Verbosidad solver (tee): `BIOREF_SOLVER_TEE` (0/1)
+
+Uso rápido:
+```python
+from biorefinery.config import get_config
+cfg = get_config()
+print(cfg.primary_nlp, cfg.time_limit)
+```
+
+## Acceso a Datos
+Usar el helper:
+```python
+from biorefinery.models.data_access import get_data_path
+path = get_data_path("Glucose.csv")
+```
+Hace fallback automático a la ruta legacy si aún no se migró el archivo.
+
+## Notas sobre Dependencias
+Dependencias núcleo: Pyomo, NumPy, pandas, Matplotlib, SciPy. 
+Extras de desarrollo: pytest + pytest-cov.
+Solver recomendado para continuo: Ipopt (instalación externa no incluida). Para MINLP considerar integrar BONMIN/SCIP vía Pyomo o GAMS si licencia disponible.
+
+## Licencia y Origen
+Este trabajo deriva de un repositorio académico original (créditos al autor original). Este fork se limita a reorganización y reproducibilidad.
+
+---
+_Si algo falla al correr el script original, documentar el error exacto y se añadirá sección de troubleshooting._
+
+## Builder de Fermentación y Kinetics (Detalle)
+El builder acepta `include_kinetics` (False por defecto) para mantener un modelo mínimo rápido en CI y pruebas unitarias. Con la opción activada:
+
+- Params migradas: `Y_CO2_G`, `Y_CO2_X`, `Y_Eth_G`, `Y_Eth_X`, `Y_Cell_G`, `Y_Cell_X`, `Y_ACT_HMF`, `Y_CO2_HMF`, `qmax_*` (G, X, F, HMF, ATC), `KI_*`, `KIP_*`, `KSP_*`, `gamma_*`, mantenimiento (`m_G`, `m_X`), dependencia pH (`K0G/K1G/K2G`, `K0X/K1X/K2X`).
+- Variables: `q[t,substrato]` (G, X, F, HMF, ACT) y `R[t,reaccion]` (Eth, ACT_from_HMF, CO2_total).
+- Constraints stub: relaciones de rendimiento (ej. `R_Eth = q_G*Y_Eth_G + q_X*Y_Eth_X`). No se incluyen aún los términos de inhibición ni balances de concentración completos.
+
+Novedades recientes:
+- Balances de concentración (subset: G, X, Eth) enlazando derivadas con `q` y `R`.
+- `initial_concentrations={}` para fijar valores iniciales reproducibles.
+- `route_config` (Param mutable) y helper `set_route_activation` para toggles discretos.
+ - `route_config` (Param mutable), helper `set_route_activation` y utilitario `get_route_external_variables`.
+
+Roadmap cinético actualizado:
+1. (Hecho) Parámetros + tasas agregadas y constraints stub.
+2. (Parcial) Cinética detallada glucosa & xilosa (`detailed_kinetics`).
+3. (Pendiente) Cinética detallada Furfural, HMF, ACT.
+4. (Parcial) Balances ODE subset; extender a especies restantes + dilución/feeds.
+5. (Hecho básico) Toggles de rutas para DSDA.
+6. (Pendiente) Pruebas de regresión vs script legacy + sensibilidad.
+
+Ejemplo rápido:
+```python
+from biorefinery.models.fermentation import build_fermentation_model, set_route_activation
+
+m = build_fermentation_model(include_kinetics=True, detailed_kinetics=True,
+               initial_concentrations={'G':10,'X':5,'Eth':0,'Cell':1,'F':0,'ACT':0,'HMF':0})
+
+set_route_activation(m,'G', False)
+print('Ruta G activa?', m.route_config['G'].value)
+set_route_activation(m,'G', True)
+print('Ruta G activa?', m.route_config['G'].value)
+
+print('Params qmax presentes:', [name for name,_ in m.component_map().items() if str(name).startswith('qmax_')])
+```
+
+### Mini ejemplo de exploración DSDA conceptual
+```python
+import pyomo.environ as pe
+from biorefinery.models.fermentation import build_fermentation_model, set_route_activation
+
+m = build_fermentation_model(include_kinetics=True, detailed_kinetics=True,
+               initial_concentrations={'G':10,'X':5,'Eth':0,'Cell':1,'F':0,'ACT':0,'HMF':0})
+
+routes = ['G','X','F','HMF','ACT']
+best = None
+for r in routes:
+  set_route_activation(m, r, False)
+  # Aquí iría solve_subproblem(m) cuando el solver wrapper esté acoplado
+  val = pe.value(m.obj)
+  best = val if best is None else min(best, val)
+  set_route_activation(m, r, True)
+print('Mejor valor objetivo en vecinos simples:', best)
+```
+
+### Extracción de variables externas (DSDA)
+```python
+from biorefinery.models.fermentation import get_route_external_variables
+ext_vars = get_route_external_variables(m)
+print(ext_vars)  # {'route_active_G':1, ...}
+```
+
