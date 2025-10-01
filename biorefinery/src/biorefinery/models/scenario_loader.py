@@ -27,6 +27,27 @@ class LoadedScenario:
     scheduling: SchedulingConfig
     seed: int
     name: str
+    scenario_hash: str
+def compute_scenario_hash(raw: Dict[str, Any]) -> str:
+    """Compute a deterministic hash of a scenario.
+
+    Excludes purely descriptive / non-functional fields: description, tags.
+    Includes version (so version bump changes hash deliberately) and name.
+    Orders all dict keys recursively for stable serialization.
+    Floats are serialized with repr() via json default to minimize rounding ambiguity.
+    """
+    import hashlib
+
+    def scrub(obj: Any):
+        if isinstance(obj, dict):
+            return {k: scrub(v) for k, v in sorted(obj.items()) if k not in {"description", "tags"}}
+        if isinstance(obj, list):
+            return [scrub(v) for v in obj]
+        return obj
+
+    canonical = scrub(raw)
+    payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _load_schema(schema_path: Path) -> Dict[str, Any]:
@@ -99,12 +120,14 @@ def load_scenario(path: str | Path) -> LoadedScenario:
     random.seed(seed)
     fermentation = _build_fermentation(raw.get("fermentation", {}))
     scheduling = _build_scheduling(raw.get("scheduling", {}))
+    scen_hash = compute_scenario_hash(raw)
     return LoadedScenario(
         raw=raw,
         fermentation=fermentation,
         scheduling=scheduling,
         seed=seed,
         name=raw.get("name", path.stem),
+        scenario_hash=scen_hash,
     )
 
-__all__ = ["LoadedScenario", "load_scenario", "validate_scenario"]
+__all__ = ["LoadedScenario", "load_scenario", "validate_scenario", "compute_scenario_hash"]

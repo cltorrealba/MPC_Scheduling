@@ -1,0 +1,179 @@
+{
+  "meta": {
+    "total_time_h": 12.0,
+    "step_time_h": 6.0,
+    "horizon_time_h": 12.0,
+    "iterations": 1,
+    "solver": "ipopt",
+    "constant_policy": false,
+    "constant_hold_up": false,
+    "economic_objective": false,
+    "economic_objective_exact": false,
+    "disturbance_alpha": 0.0,
+    "execution_disturbance_alpha": 0.0,
+    "export_step_only": false,
+    "seed": null,
+    "compressed_applied": false,
+    "checkpoint_interval": 0,
+    "resume_source": null,
+    "max_iterations": 1,
+    "no_rates": false,
+    "force_nonzero_drift": false,
+    "drift_definition": "l2 and max abs over species + hold_up (pred vs realized after exec disturbance)",
+    "config_hash": "7777721499dbf953",
+    "code_commit": "7353cbf",
+    "param_hash": null,
+    "scenario_hash": null,
+    "warm_start_enabled": false,
+    "warm_start_iterations": 0
+  },
+  "records": [
+    {
+      "iteration": 0,
+      "t_start_s": 0.0,
+      "t_end_s": 21600.0,
+      "status": "infeasible",
+      "max_constraint_violation": 1999.9999999997892,
+      "top_constraint_violations": [
+        {
+          "name": "mass_balance[0.5]",
+          "violation": 1999.9999999997892
+        },
+        {
+          "name": "species_balance[0.5,X]",
+          "violation": 4.5734735058801145e-09
+        },
+        {
+          "name": "species_balance[0.5,CO2]",
+          "violation": 4.1646674438946215e-09
+        },
+        {
+          "name": "species_balance[0.5,Eth]",
+          "violation": 4.106868618712563e-09
+        },
+        {
+          "name": "species_balance[0.5,G]",
+          "violation": 1.81475676550764e-09
+        }
+      ],
+      "prepass_status": "other",
+      "applied_control": {
+        "F_liquified_fibers": 0.7728709285665164,
+        "F_C5liquid": 0.19156699915544598
+      },
+      "economic_metric": 49.999999999873694,
+      "ethanol_conc_end": 18.154513200691913,
+      "hold_up_end": 4.367714338239773e-11,
+      "neg_species": [],
+      "ethanol_non_monotonic": false,
+      "drift_l2": null,
+      "drift_max_abs": null,
+      "predicted_end_state": {
+        "C": {
+          "G": 8.447215803776572,
+          "X": 4.907940807928633,
+          "Eth": 18.154513200691913,
+          "Cell": 5.769174429371494,
+          "F": 1.3227970660416448,
+          "HMF": 0.5149156263648345,
+          "ACT": 2.12885875425341,
+          "CO2": 18.425236033992483
+        },
+        "M": 4.367714338239773e-11
+      },
+      "realized_end_state": {
+        "C": {
+          "G": 8.447215803776572,
+          "X": 4.907940807928633,
+          "Eth": 18.154513200691913,
+          "Cell": 5.769174429371494,
+          "F": 1.3227970660416448,
+          "HMF": 0.5149156263648345,
+          "ACT": 2.12885875425341,
+          "CO2": 18.425236033992483
+        },
+        "M": 4.367714338239773e-11
+      }
+    }
+  ],
+  "trajectory": {
+    "time_s": [
+      0.0,
+      21600.0
+    ],
+    "species": {
+      "G": [
+        10.0,
+        8.447215803776572
+      ],
+      "X": [
+        5.0,
+        4.907940807928633
+      ],
+      "Eth": [
+        0.0,
+        18.154513200691913
+      ],
+      "Cell": [
+        1.0,
+        5.769174429371494
+      ],
+      "F": [
+        0.2,
+        1.3227970660416448
+      ],
+      "HMF": [
+        0.1,
+        0.5149156263648345
+      ],
+      "ACT": [
+        0.05,
+        2.12885875425341
+      ],
+      "CO2": [
+        0.0,
+        18.425236033992483
+      ]
+    },
+    "hold_up": [
+      999.9999999999994,
+      4.367714338239773e-11
+    ],
+    "q_series": {
+      "G": [
+        1.1725830161014024,
+        0.0015807368783821133
+      ],
+      "X": [
+        1.166290118359067,
+        0.002745973587130824
+      ],
+      "F": [
+        0.0,
+        0.00025964097156328436
+      ],
+      "HMF": [
+        1.4674746133362744,
+        0.00025633322851105505
+      ],
+      "ACT": [
+        0.0,
+        3.261438101007083e-05
+      ]
+    },
+    "R_series": {
+      "Eth": [
+        1.0176300649112862,
+        0.0018413357676919267
+      ],
+      "ACT_from_HMF": [
+        0.3432716615516213,
+        5.996146881341291e-05
+      ],
+      "CO2_total": [
+        1.1643775262449136,
+        0.001866969090543032
+      ]
+    }
+  }
+}

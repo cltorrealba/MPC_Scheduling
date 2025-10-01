@@ -32,7 +32,9 @@ ABS_TOL_FINAL = 1e-5
 REL_TOL_FINAL = 1e-3
 ABS_TOL_SERIES = 1e-4
 REL_TOL_SERIES = 2e-3
-TRACK_SPECIES = ['G','X','Eth','Cell','CO2']
+ABS_TOL_SERIES_SMALL = 5e-5
+SMALL_THRESHOLD = 1e-3
+TRACK_SPECIES = ['G','X','Eth','Cell','CO2','F','HMF','ACT']
 RATE_INCLUDE_Q = True
 RATE_INCLUDE_R = True
 
@@ -142,6 +144,8 @@ def test_generate_or_validate_baseline(tmp_path):
             'tolerance_rel_final': REL_TOL_FINAL,
             'tolerance_abs_series': ABS_TOL_SERIES,
             'tolerance_rel_series': REL_TOL_SERIES,
+            'tolerance_abs_series_small': ABS_TOL_SERIES_SMALL,
+            'adaptive_small_threshold': SMALL_THRESHOLD,
             'species': TRACK_SPECIES,
             'time': time_points,
             'series': series,
@@ -166,6 +170,8 @@ def test_generate_or_validate_baseline(tmp_path):
             'tolerance_rel_final': REL_TOL_FINAL,
             'tolerance_abs_series': ABS_TOL_SERIES,
             'tolerance_rel_series': REL_TOL_SERIES,
+            'tolerance_abs_series_small': ABS_TOL_SERIES_SMALL,
+            'adaptive_small_threshold': SMALL_THRESHOLD,
             'species': TRACK_SPECIES,
             'time': time_points,
             'series': series,
@@ -198,6 +204,8 @@ def test_generate_or_validate_baseline(tmp_path):
     abs_series = stored.get('tolerance_abs_series', ABS_TOL_SERIES)
     rel_series = stored.get('tolerance_rel_series', REL_TOL_SERIES)
     stored_series = stored.get('series', {})
+    abs_small = stored.get('tolerance_abs_series_small', ABS_TOL_SERIES_SMALL)
+    small_thr = stored.get('adaptive_small_threshold', SMALL_THRESHOLD)
     for sp in TRACK_SPECIES:
         assert sp in stored_series, f'Serie {sp} no encontrada en baseline'
         ref_list = stored_series[sp]
@@ -206,8 +214,12 @@ def test_generate_or_validate_baseline(tmp_path):
         for idx, (rv, cv) in enumerate(zip(ref_list, cur_list)):
             diff = abs(rv - cv)
             rel = diff / max(1e-12, abs(rv))
-            if not (diff <= abs_series or rel <= rel_series):
-                raise AssertionError(f'Serie {sp}[{idx}] diff={diff} rel={rel} fuera de tolerancia')
+            if abs(rv) < small_thr:
+                if not (diff <= abs_small or rel <= rel_series):
+                    raise AssertionError(f'Serie {sp}[{idx}] diff={diff} rel={rel} (small ref) fuera de tolerancia')
+            else:
+                if not (diff <= abs_series or rel <= rel_series):
+                    raise AssertionError(f'Serie {sp}[{idx}] diff={diff} rel={rel} fuera de tolerancia')
 
     # Validación mínima de series de tasas si existen
     stored_q = stored.get('q_series', {})

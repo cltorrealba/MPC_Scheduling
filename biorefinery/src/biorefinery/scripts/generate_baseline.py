@@ -7,11 +7,26 @@ from biorefinery.models.fermentation import build_fermentation_model, set_route_
 from biorefinery.optimization.solvers import pick_available_solver
 
 DEFAULT_BASELINE = 'tests/validation_baseline_fermentation.json'
-TRACK_SPECIES = ['G','X','Eth','Cell','CO2']
+"""Baseline generation script (multi-species extended).
+
+Now tracks additional inhibitory / byproduct species (F, HMF, ACT) so
+regression covers more kinetics routes. Adds an adaptive small-value
+series tolerance (tolerance_abs_series_small) applied when |ref| < small
+threshold (1e-3) to avoid over-penalizing near-zero noise while still
+capturing drift on larger magnitudes.
+"""
+
+# Extended species list (legacy subset + inhibitors / acetate)
+TRACK_SPECIES = ['G','X','Eth','Cell','CO2','F','HMF','ACT']
+
+# Final metric tolerances
 ABS_TOL_FINAL = 1e-5
 REL_TOL_FINAL = 1e-3
+
+# Series tolerances (dual): absolute, relative; plus stricter small-value abs tol
 ABS_TOL_SERIES = 1e-4
 REL_TOL_SERIES = 2e-3
+ABS_TOL_SERIES_SMALL = 5e-5  # applied when |ref| < 1e-3
 
 # Flags por defecto para incluir series de tasas
 INCLUDE_Q_SERIES = True
@@ -96,6 +111,8 @@ def extract_payload(m, solver_name, include_q=True, include_r=True):
         'series': series,
         'solver': solver_name,
         'param_hash': _collect_param_hash(m),
+        'tolerance_abs_series_small': ABS_TOL_SERIES_SMALL,
+        'adaptive_small_threshold': 1e-3,
     }
     if q_series:
         payload['q_series'] = q_series

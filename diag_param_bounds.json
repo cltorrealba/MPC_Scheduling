@@ -1,0 +1,185 @@
+{
+  "meta": {
+    "total_time_h": 12.0,
+    "step_time_h": 6.0,
+    "horizon_time_h": 12.0,
+    "iterations": 1,
+    "solver": "ipopt",
+    "constant_policy": false,
+    "constant_hold_up": false,
+    "mass_balance_slack": false,
+    "mass_balance_slack_weight": 1000.0,
+    "economic_objective": false,
+    "economic_objective_exact": false,
+    "disturbance_alpha": 0.0,
+    "execution_disturbance_alpha": 0.0,
+    "export_step_only": false,
+    "seed": null,
+    "compressed_applied": false,
+    "checkpoint_interval": 0,
+    "resume_source": null,
+    "max_iterations": 1,
+    "no_rates": false,
+    "force_nonzero_drift": false,
+    "drift_definition": "l2 and max abs over species + hold_up (pred vs realized after exec disturbance)",
+    "config_hash": "6886a56df64430ba",
+    "code_commit": "7353cbf",
+    "param_hash": null,
+    "scenario_hash": null,
+    "warm_start_enabled": false,
+    "warm_start_iterations": 0,
+    "rate_scale": 10.0
+  },
+  "records": [
+    {
+      "iteration": 0,
+      "t_start_s": 0.0,
+      "t_end_s": 21600.0,
+      "status": "optimal",
+      "max_constraint_violation": 7.010145311459048e-10,
+      "top_constraint_violations": [
+        {
+          "name": "species_balance[1,AC]",
+          "violation": 7.010145311459048e-10
+        },
+        {
+          "name": "species_balance[1,CS]",
+          "violation": 1.2960133660699924e-10
+        },
+        {
+          "name": "species_balance[1,XS]",
+          "violation": 1.2960133660699924e-10
+        },
+        {
+          "name": "species_balance[1,LS]",
+          "violation": 1.2960133660699924e-10
+        },
+        {
+          "name": "species_balance[1,C]",
+          "violation": 1.2960133660699924e-10
+        }
+      ],
+      "prepass_status": "other",
+      "applied_control": {
+        "F_liquified_fibers": 0.8927029066252319,
+        "F_C5liquid": 0.18842750072280898
+      },
+      "economic_metric": -30082.48305714469,
+      "avg_Fin": 0.3603767957933098,
+      "delta_M": -0.00043131120457928773,
+      "max_mass_slack": null,
+      "ethanol_conc_end": 4.113879728172465,
+      "hold_up_end": 999.999784330991,
+      "neg_species": [],
+      "ethanol_non_monotonic": false,
+      "drift_l2": null,
+      "drift_max_abs": null,
+      "predicted_end_state": {
+        "C": {
+          "G": 4.668731992994019,
+          "X": 0.9795442002583206,
+          "Eth": 4.113879728172465,
+          "Cell": 1.0000002156691021,
+          "F": 0.01148976826407275,
+          "HMF": 0.021614551240544674,
+          "ACT": 0.056583314012664296,
+          "CO2": 4.121718275205103
+        },
+        "M": 999.999784330991
+      },
+      "realized_end_state": {
+        "C": {
+          "G": 4.668731992994019,
+          "X": 0.9795442002583206,
+          "Eth": 4.113879728172465,
+          "Cell": 1.0000002156691021,
+          "F": 0.01148976826407275,
+          "HMF": 0.021614551240544674,
+          "ACT": 0.056583314012664296,
+          "CO2": 4.121718275205103
+        },
+        "M": 999.999784330991
+      }
+    }
+  ],
+  "trajectory": {
+    "time_s": [
+      0.0,
+      21600.0
+    ],
+    "species": {
+      "G": [
+        10.0,
+        4.668731992994019
+      ],
+      "X": [
+        5.0,
+        0.9795442002583206
+      ],
+      "Eth": [
+        0.0,
+        4.113879728172465
+      ],
+      "Cell": [
+        1.0,
+        1.0000002156691021
+      ],
+      "F": [
+        0.2,
+        0.01148976826407275
+      ],
+      "HMF": [
+        0.1,
+        0.021614551240544674
+      ],
+      "ACT": [
+        0.05,
+        0.056583314012664296
+      ],
+      "CO2": [
+        0.0,
+        4.121718275205103
+      ]
+    },
+    "hold_up": [
+      1000.0,
+      999.999784330991
+    ],
+    "q_series": {
+      "G": [
+        103094.83530508314,
+        0.0002468180099031019
+      ],
+      "X": [
+        102621.81756709235,
+        0.00018613222273143758
+      ],
+      "F": [
+        0.0,
+        8.727325658051608e-06
+      ],
+      "HMF": [
+        161386.55083310723,
+        3.62895617690024e-06
+      ],
+      "ACT": [
+        0.0,
+        2.720514688624186e-07
+      ]
+    },
+    "R_series": {
+      "Eth": [
+        89503.29962022603,
+        0.00019045735374703294
+      ],
+      "ACT_from_HMF": [
+        37751.54197088044,
+        8.488854289005041e-07
+      ],
+      "CO2_total": [
+        105641.95470353674,
+        0.00019082024936472295
+      ]
+    }
+  }
+}

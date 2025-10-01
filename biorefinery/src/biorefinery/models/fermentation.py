@@ -36,6 +36,9 @@ def build_fermentation_model(
     feed_concentrations: Optional[Dict[str, float]] = None,
     enable_mass_balance: bool = False,
     feed_control: bool = False,
+    max_concentration: float = 200.0,
+    min_hold_up: float = 100.0,
+    rate_scale: float = 1.0,
 ) -> pe.ConcreteModel:
     """Create a minimal fermentation Pyomo model with optional kinetics and initial conditions.
 
@@ -68,6 +71,13 @@ def build_fermentation_model(
     feed_control : bool
         If True (with enable_mass_balance), exposes Fin(t) explicitly; otherwise Fin is derived from
         component feeds (F_C5liquid + F_liquified_fibers). Placeholder for ENMPC loop.
+
+    rate_scale : float
+        Escala típica para tasas q y R. Si >1 se aplican factores de scaling (1/rate_scale) a esas
+        variables para mejorar la condición numérica (exportado vía suffix a Ipopt). No re‑formula
+        las ecuaciones: sólo guía el escalado interno del solver. El filtrado evita agregar
+        scaling a variables fijadas o puntos iniciales que no participan en restricciones
+        (reduce advertencias de Ipopt sobre keys no exportadas).
 
     Returns
     -------
@@ -210,8 +220,9 @@ def build_fermentation_model(
         m.M0 = pe.Param(initialize=1000.0, mutable=True, doc="Initial reactor hold-up [kg]")
 
     # Simplified species concentrations (initially zero; real init handled externally)
-    m.C = pe.Var(m.t, m.j, initialize=0, within=pe.NonNegativeReals, bounds=(0, 1000))
-    m.M = pe.Var(m.t, initialize=1, within=pe.NonNegativeReals, bounds=(0, m.Mmax))
+    # Tighter concentration upper bound to prevent runaway inflation during infeasible mass balance search
+    m.C = pe.Var(m.t, m.j, initialize=0, within=pe.NonNegativeReals, bounds=(0, max_concentration))
+    m.M = pe.Var(m.t, initialize=1000.0, within=pe.NonNegativeReals, bounds=(min_hold_up, m.Mmax))
 
     # Apply initial concentrations if provided
     if initial_concentrations:
@@ -492,78 +503,130 @@ def build_fermentation_model(
             m.qACT_simple = pe.Constraint(m.t, rule=_qACT_simple)
 
         # ------------------------------------------------------------------
-        # Concentration balances (initial subset) for substrates & ethanol
-        # dC/dt (dimensionless time) * final_time = physical rate. We link
-        # consumption/production ignoring dilution & feed terms for now.
-        # Signs: q (uptake) consumes substrate; R['Eth'] produces ethanol.
-        # TODO: integrate feed dilution and cell growth coupling.
+        # Concentration balances (secondary formulation) NOTE:
+        # Earlier in mass-balance mode we added species_balance constraints when
+        # enable_mass_balance & include_kinetics are True. Those already impose
+        # dynamic equations. Duplicating them here causes an overdetermined system
+        # leading to infeasibilities. Therefore we only build this alternative
+        # concentration_balances block when that earlier set is NOT present.
         # ------------------------------------------------------------------
-        tracked_balances = ['G', 'X', 'Eth', 'F', 'HMF', 'ACT', 'Cell', 'CO2']
+        if not (enable_mass_balance and include_kinetics):
+            tracked_balances = ['G', 'X', 'Eth', 'F', 'HMF', 'ACT', 'Cell', 'CO2']
 
-        # Precompute total flow and feed concentrations (only if dilution enabled)
-        if include_dilution:
-            # Parameter for feed concentrations (species not provided -> 0)
-            def _feed_conc_init(j):
-                if feed_concentrations and j in feed_concentrations:
-                    return feed_concentrations[j]
-                return 0.0
-            m.feed_conc = pe.Param(m.j, initialize=_feed_conc_init, mutable=True, doc="Feed concentrations [g/kg or consistent units]")
+            if include_dilution:
+                def _feed_conc_init(j):
+                    if feed_concentrations and j in feed_concentrations:
+                        return feed_concentrations[j]
+                    return 0.0
+                m.feed_conc = pe.Param(m.j, initialize=_feed_conc_init, mutable=True, doc="Feed concentrations [g/kg or consistent units]")
 
-            def _total_flow(m, t):
-                return m.F_C5liquid[t] + m.F_liquified_fibers[t]
-            m.total_flow = pe.Expression(m.t, rule=_total_flow)
+                def _total_flow(m, t):
+                    return m.F_C5liquid[t] + m.F_liquified_fibers[t]
+                m.total_flow = pe.Expression(m.t, rule=_total_flow)
+            m.eps_div = pe.Param(initialize=1e-6, doc="Small epsilon for safe division in dilution")
 
-            # Effective dilution coefficient D = F_total / M (avoid division by zero; M bounded >0)
-            def _dilution(m, t):
-                return m.total_flow[t] / pe.maximize(1e-6, m.M[t])  # safeguard tiny mass
-            # Pyomo lacks direct maximize in expressions; fallback: small epsilon logic below
-            # We'll implement safe division manually in each balance rather than expression.
-        # Small epsilon to avoid division by zero in dilution terms
-        m.eps_div = pe.Param(initialize=1e-6, doc="Small epsilon for safe division in dilution")
+            def _balance_rule(comp):
+                def _rule(b, t):
+                    M = b.model()
+                    if t == M.t.first():
+                        return pe.Constraint.Skip
+                    def _with_dilution(core_rhs):
+                        if not include_dilution:
+                            return core_rhs
+                        total_flow = M.F_C5liquid[t] + M.F_liquified_fibers[t]
+                        denom = M.M[t] + M.eps_div
+                        return core_rhs - total_flow * M.C[t, comp] / denom + total_flow * M.feed_conc[comp] / denom
+                    if comp == 'G':
+                        return M.dCdt[t, 'G'] * M.final_time == _with_dilution(-M.q[t, 'G'])
+                    if comp == 'X':
+                        return M.dCdt[t, 'X'] * M.final_time == _with_dilution(-M.q[t, 'X'])
+                    if comp == 'Eth':
+                        return M.dCdt[t, 'Eth'] * M.final_time == _with_dilution(M.R[t, 'Eth'])
+                    if comp == 'F':
+                        return M.dCdt[t, 'F'] * M.final_time == _with_dilution(-M.q[t, 'F'])
+                    if comp == 'HMF':
+                        return M.dCdt[t, 'HMF'] * M.final_time == _with_dilution(-M.q[t, 'HMF'])
+                    if comp == 'ACT':
+                        return M.dCdt[t, 'ACT'] * M.final_time == _with_dilution(M.q[t, 'HMF'] * M.Y_ACT_HMF - M.q[t, 'ACT'])
+                    if comp == 'Cell':
+                        core = (M.q[t, 'G'] * M.Y_Cell_G + M.q[t, 'X'] * M.Y_Cell_X - (M.m_G + M.m_X) * M.C[t, 'Cell'])
+                        return M.dCdt[t, 'Cell'] * M.final_time == _with_dilution(core)
+                    if comp == 'CO2':
+                        return M.dCdt[t, 'CO2'] * M.final_time == _with_dilution(M.R[t, 'CO2_total'])
+                    return pe.Constraint.Skip
+                return _rule
 
-        def _balance_rule(comp):
-            def _rule(b, t):
-                M = b.model()  # parent model
-                if t == M.t.first():
-                    return pe.Constraint.Skip  # handled via initial condition mechanism
-                # Common helper for dilution source/sink
-                def _with_dilution(core_rhs):
-                    if not include_dilution:
-                        return core_rhs
-                    total_flow = M.F_C5liquid[t] + M.F_liquified_fibers[t]
-                    denom = M.M[t] + M.eps_div
-                    return core_rhs - total_flow * M.C[t, comp] / denom + total_flow * M.feed_conc[comp] / denom
-                if comp == 'G':
-                    return M.dCdt[t, 'G'] * M.final_time == _with_dilution(-M.q[t, 'G'])
-                if comp == 'X':
-                    return M.dCdt[t, 'X'] * M.final_time == _with_dilution(-M.q[t, 'X'])
-                if comp == 'Eth':
-                    return M.dCdt[t, 'Eth'] * M.final_time == _with_dilution(M.R[t, 'Eth'])
-                if comp == 'F':
-                    return M.dCdt[t, 'F'] * M.final_time == _with_dilution(-M.q[t, 'F'])
-                if comp == 'HMF':
-                    return M.dCdt[t, 'HMF'] * M.final_time == _with_dilution(-M.q[t, 'HMF'])
-                if comp == 'ACT':
-                    return M.dCdt[t, 'ACT'] * M.final_time == _with_dilution(M.q[t, 'HMF'] * M.Y_ACT_HMF - M.q[t, 'ACT'])
-                if comp == 'Cell':
-                    core = (M.q[t, 'G'] * M.Y_Cell_G + M.q[t, 'X'] * M.Y_Cell_X - (M.m_G + M.m_X) * M.C[t, 'Cell'])
-                    return M.dCdt[t, 'Cell'] * M.final_time == _with_dilution(core)
-                if comp == 'CO2':
-                    return M.dCdt[t, 'CO2'] * M.final_time == _with_dilution(M.R[t, 'CO2_total'])
-                return pe.Constraint.Skip
-            return _rule
-
-        m.concentration_balances = pe.Block()
-        for comp in tracked_balances:
-            setattr(
-                m.concentration_balances,
-                f"bal_{comp}",
-                pe.Constraint(m.t, rule=_balance_rule(comp))
-            )
+            m.concentration_balances = pe.Block()
+            for comp in tracked_balances:
+                setattr(
+                    m.concentration_balances,
+                    f"bal_{comp}",
+                    pe.Constraint(m.t, rule=_balance_rule(comp))
+                )
 
     # Discretize in time (collocation skeleton)
     discretizer_t = pe.TransformationFactory("dae.collocation")
     discretizer_t.apply_to(m, nfe=n_f_elements_t, ncp=1, wrt=m.t)
+
+    # -------------------- Variable Scaling (Solver Hint) --------------------
+    # Provide scaling factors to the solver to reduce magnitude disparities.
+    if rate_scale <= 0:
+        rate_scale = 1.0
+    try:
+        m.scaling_factor = getattr(m, 'scaling_factor', pe.Suffix(direction=pe.Suffix.EXPORT))
+        # Scale q and R by 1/rate_scale if kinetics active
+        if include_kinetics and hasattr(m,'q'):
+            rs = 1.0 / rate_scale
+            t0 = m.t.first()
+            for idx in m.q:
+                # idx = (t, species)
+                if isinstance(idx, tuple) and idx[0] == t0:
+                    # Primer punto suele tener Constraint.Skip
+                    continue
+                var = m.q[idx]
+                if var.fixed:
+                    continue
+                m.scaling_factor[var] = rs
+        if include_kinetics and hasattr(m,'R'):
+            rs = 1.0 / rate_scale
+            t0 = m.t.first()
+            for idx in m.R:
+                if isinstance(idx, tuple) and idx[0] == t0:
+                    continue
+                var = m.R[idx]
+                if var.fixed:
+                    continue
+                m.scaling_factor[var] = rs
+        # Scale M relative to (initial) hold-up magnitude so M ~ O(1)
+        if hasattr(m,'M') and hasattr(m,'M0'):
+            try:
+                baseM = float(pe.value(m.M0))
+            except Exception:
+                baseM = 1000.0
+            if baseM <= 0:
+                baseM = 1000.0
+            m_scale = 1.0 / baseM
+            for tau in m.t:
+                v = m.M[tau]
+                if v.fixed:
+                    continue
+                m.scaling_factor[v] = m_scale
+        # Concentrations scaled by max_concentration
+        if hasattr(m,'C'):
+            try:
+                cmax = float(max(v[1] for v in [m.C.bounds] if v))  # fallback
+            except Exception:
+                cmax = 200.0
+            if cmax <= 0:
+                cmax = 200.0
+            c_scale = 1.0 / cmax
+            for idx in m.C:
+                v = m.C[idx]
+                if v.fixed:
+                    continue
+                m.scaling_factor[v] = c_scale
+    except Exception:
+        pass
 
     # Objective placeholder (e.g., maximize ethanol concentration final point)
     ethanol = "Eth"

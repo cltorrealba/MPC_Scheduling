@@ -488,6 +488,25 @@ python -m biorefinery.scripts.run_enmpc --total-time-h 72 --horizon-time-h 24 --
   --output enmpc_econ_dist.json
 ```
 
+### Organización de Salidas (Carpetas de Resultados)
+Para mantener el repositorio limpio evita dejar JSON/PNG/CSV en la raíz usando:
+
+- `--results-dir` en `run_enmpc`: crea directorio y coloca `output` + checkpoints `*_ck_###.json` dentro.
+- `--output-dir` en `plot_enmpc_overlay`: guarda PNG y CSV en la carpeta indicada.
+
+Ejemplo:
+```powershell
+python -m biorefinery.scripts.run_enmpc --total-time-h 48 --horizon-time-h 12 --step-time-h 6 \
+  --nfe 5 --warm-start --enforce-monotonic-m --results-dir results/exp01 --output run_exp01.json
+
+python -m biorefinery.scripts.plot_enmpc_overlay --runs results/exp01/run_exp01.json \
+  --species Eth,G --plot-holdup --normalize-hours --output-dir results/exp01/plots \
+  --output overlay.png --export-csv overlay.csv
+```
+Checkpoints generados: `results/exp01/run_exp01_ck_001.json`, `..._ck_002.json`, etc.
+
+Limpieza futura: se añadirá script `clean_outputs.py` para eliminar artefactos antiguos por patrón (JSON/CSV/PNG) con opción `--dry-run`.
+
 ### Plots Comparativos
 ```powershell
 python -m biorefinery.scripts.plot_enmpc_vs_constant --enm enmpc_run.json --const constant_run.json --prefix figs_enmpc
@@ -585,4 +604,124 @@ Compresión de trayectoria (`--export-step-only`): reduce tamaño del JSON para 
 Tests añadidos:
 - `test_enmpc_economic.py`: objetivo económico exacto/surrogate y series cinéticas.
 - `test_enmpc_drift.py`: valida que las métricas de drift sean positivas bajo perturbación.
+
+## Fase 3: Estabilización Numérica, DSDA Multi-Start Persistente y Visualización Avanzada
+
+Esta fase consolida tres ejes: (1) estabilización/diagnóstico de infeasibilidad en ENMPC, (2) exploración discreta multi-start persistente (DSDA) y (3) overlay de múltiples corridas con instrumentación completa.
+
+### 1. Estabilización y Diagnóstico
+Problema original: infeasibilidad recurrente dominada por la restricción de balance de masa (violaciones ~O(10^3)) y colapso de `M` a valores cercanos a cero, generando trayectorias degeneradas.
+
+Medidas implementadas:
+- Eliminación de balances duplicados que sobre-restringían el sistema.
+- Parámetros configurables de cotas: `--max-concentration`, `--min-hold-up` para prevenir degeneración.
+- Opción `--mass-balance-slack` con penalización cuadrática (`--mass-balance-slack-weight`) para cuantificar violaciones potenciales (diagnóstico sin abortar la corrida).
+- Sufijo de escalado selectivo sobre variables clave (`q`, `R`, `M`, `C`) para mejorar condición numérica (sin alterar solución, ver test de invariancia `test_scaling_invariance.py`).
+- Clamp de micro-negativos numéricos en variables no negativas al capturar warm start para evitar warnings y propagación de ruido.
+- Flag opcional `--enforce-monotonic-m` agregando restricciones `M[t_i] ≥ M[t_{i-1}] - 1e-9` evitando descensos espurios lineales y negativos por drift numérico.
+
+Diagnósticos disponibles por `record`:
+- `max_constraint_violation`, `top_constraint_violations` (primeras 5 con magnitud).
+- `avg_Fin`, `delta_M`, `min_M_over_horizon` (nueva métrica para monitorear estabilidad del hold-up dentro del sub-horizonte aplicado).
+- `neg_species`, `ethanol_non_monotonic` para depurar trayectorias.
+
+### 2. DSDA Multi-Start Persistente
+Se añadió un script multi-start que:
+- Explora configuraciones discretas de rutas (bitmask / toggles) mediante arranque aleatorio y/o enumeración parcial.
+- Mantiene un cache JSON incremental (evita reevaluar combinaciones previas, conserva mejor global entre ejecuciones). 
+- Expone hashing de configuración para invalidar cache cuando cambian parámetros relevantes.
+- Está cubierto por prueba `test_dsda_cache.py` que verifica crecimiento del cache y selección del mejor.
+
+Características clave:
+- Reanudación natural: al relanzar el script sobre el mismo archivo de cache amplía el conjunto evaluado.
+- Control sobre exhaustividad vs aleatoriedad (flags en el script DSDA). 
+- Métricas por configuración: valor objetivo, factibilidad, timestamp.
+
+### 3. Overlay Avanzado de Corridas ENMPC
+Script: `biorefinery/scripts/plot_enmpc_overlay.py` ampliado con:
+- Selección de especies y tasas (`--plot-rates` G,Eth,...).
+- Panel opcional de hold-up (`--plot-holdup`).
+- Panel de controles con serie completa reconstruida (`control_series`).
+- Exportación CSV unificada (`--export-csv`) con esquema largo (`run,time,value,type,name`).
+- Filtros por substring de nombre de run (`--filter-run-contains`, `--filter-run-exclude`).
+- Modo columnas por corrida (`--per-run-columns`) para comparar 1:1 monotónico vs no monotónico.
+- Detección de monotonicidad (`--monotonic-style-hint`): estilo sólido si `meta.enforce_monotonic_m=true`, estilo discontínuo si no.
+- Anotación de estadísticas de hold-up (`--annotate-stats`) min/max/final.
+
+Ejemplo comparativo:
+```powershell
+python -m biorefinery.scripts.run_enmpc --total-time-h 48 --step-time-h 6 --horizon-time-h 12 ^
+  --nfe 5 --warm-start --enforce-monotonic-m --output diag_monotonic.json
+python -m biorefinery.scripts.run_enmpc --total-time-h 48 --step-time-h 6 --horizon-time-h 12 ^
+  --nfe 5 --warm-start --output diag_nomono.json
+python -m biorefinery.scripts.plot_enmpc_overlay --runs diag_monotonic.json diag_nomono.json ^
+  --species Eth,G --normalize-hours --plot-holdup --plot-controls ^
+  --per-run-columns --monotonic-style-hint --annotate-stats --output overlay_columns.png
+```
+
+### Campos Nuevos en JSON (Fase 3)
+- `trajectory.control_series`: dict con series de `F_liquified_fibers` y `F_C5liquid` a lo largo del horizonte aplicado.
+- `records[*].min_M_over_horizon`: mínimo de M en puntos del sub-horizonte (sanity check de estabilidad).
+- `meta.rate_scale`: factor de escala conceptual (afecta hashing, no debe cambiar solución física; test invariancia verifica).
+- `meta.constant_hold_up`, `meta.mass_balance_slack`, `meta.mass_balance_slack_weight` y `meta.warm_start_iterations` consolidados.
+
+### Nuevos Flags (Resumen rápido)
+| Flag | Propósito |
+|------|-----------|
+| `--max-concentration` | Cota superior unificada para C[j]. |
+| `--min-hold-up` | Cota inferior M para evitar colapso. |
+| `--rate-scale` | Escalado de variables cinéticas para conditioning. |
+| `--mass-balance-slack` | Activa reformulación con slack_M diagnóstica. |
+| `--mass-balance-slack-weight` | Peso cuadrático penalización slack. |
+| `--enforce-monotonic-m` | Monotonía no decreciente de M(t). |
+| `--warm-start` | Aplica snapshot primal anterior para acelerar convergencia. |
+| `--feas-prepass` | Pre-pase factibilidad con q,R=0 antes de liberar optimización. |
+
+### Pruebas Añadidas (Fase 3)
+- `test_scaling_invariance.py`: confirma invariancia de solución ante `--rate-scale`.
+- `test_bounds_parameters.py`: verifica aplicación de bounds configurables.
+- `test_dsda_cache.py`: crecimiento y consistencia del cache multi-start DSDA.
+
+### Recomendaciones Operativas
+- Para diagnósticos de infeasibilidad inicial: usar `--mass-balance-slack --tee` y revisar `top_constraint_violations`.
+- Para producción estable: usar `--enforce-monotonic-m --min-hold-up <valor>` y evitar slack salvo necesidad.
+- Limitar tamaño JSON en corridas largas con `--export-step-only` (solo después de finalizar si se planea resume intermedio).
+- Activar `--hash-params` en estudios sensibles a cambios de cinética/parametría para versión controlada del baseline.
+
+### Próximos Pasos (Futuro Post-Fase 3)
+1. Penalización suave de variación en M (si se requieren trayectorias aún más suaves sin fijar monotonicidad estricta).
+2. Integrar decisiones discretas dentro del horizonte NMPC (híbrido DSDA+NMPC).
+3. Métrica económica ampliada (costos dinámicos de feed, penalizaciones de energía). 
+4. Dashboard interactivo (streamlit o panel) para inspección multi-run sin regenerar PNG.
+
+---
+_Cierre Fase 3_: El sistema ahora ofrece un pipeline reproducible, con tooling para aislar problemas numéricos, comparar variantes estructurales y visualizar evoluciones bajo distintas políticas y estabilizadores.
+
+## Herramientas de Mantenimiento y Empaquetado
+
+### Limpieza de Artefactos (`clean_outputs.py`)
+Permite suprimir o comprimir (a `.gz`) salidas antiguas filtrando por patrones, edad y conservando los N más recientes.
+
+Ejemplos:
+```powershell
+# Simular (dry-run) qué PNG/CSV viejos (>7 días) se eliminarían
+python -m biorefinery.scripts.clean_outputs --paths results --patterns *.png *.csv --older-than-days 7 --dry-run
+
+# Comprimir JSON antiguos manteniendo los 3 más recientes
+python -m biorefinery.scripts.clean_outputs --paths results --patterns *.json --older-than-days 2 --action compress --keep-latest 3
+```
+Flags claves:
+- `--action delete|compress`
+- `--keep-latest N` preserva N más nuevos
+- `--hash-manifest` imprime hash SHA256 de la lista candidata
+- `--older-than-days D` filtra por antigüedad
+
+### Snapshot Reproducible (`snapshot_results.py`)
+Empaqueta archivos (JSON/CSV/PNG) en un ZIP con `MANIFEST.json` (ruta relativa, sha256, size y `manifest_hash`).
+
+```powershell
+python -m biorefinery.scripts.snapshot_results --inputs results/exp01 --patterns *.json *.png *.csv ^
+  --relative-to results --output snapshots/exp01_snapshot.zip
+```
+Usar `--dry-run` para inspeccionar antes de crear el archivo.
 

@@ -14,8 +14,9 @@ import pyomo.environ as pe
 
 from biorefinery.models import (
     FermentationConfig, build_fermentation_model_v2,
-    SchedulingConfig, TaskDef, UnitDef, build_minimal_scheduling_model
+    SchedulingConfig, TaskDef, UnitDef, build_minimal_scheduling_model,
 )
+from biorefinery.models.scenario_loader import load_scenario, compute_scenario_hash  # type: ignore
 
 def _measure_memory_mb() -> float | None:
     if psutil is None:
@@ -111,10 +112,21 @@ def main(argv: List[str] | None = None):
     ap.add_argument("--output", type=str)
     ap.add_argument("--horizon-h", type=float, default=6.0)
     ap.add_argument("--nfe", type=int, default=3)
+    ap.add_argument("--scenario", type=str, help="Ruta a archivo de escenario JSON para reproducibilidad", default=None)
     args = ap.parse_args(argv)
 
     mem_before = _measure_memory_mb()
 
+    scenario_hash = None
+    scenario_meta = None
+    if args.scenario:
+        loaded = load_scenario(args.scenario)
+        scenario_hash = loaded.scenario_hash
+        scenario_meta = {
+            "scenario_file": args.scenario,
+            "scenario_hash": scenario_hash,
+            "scenario_name": getattr(loaded, 'name', None),
+        }
     ferm_cfg = FermentationConfig(horizon_h=args.horizon_h, nfe=args.nfe, detailed_kinetics=False)
     ferm_trials = [run_fermentation_trial(ferm_cfg) for _ in range(args.repeat)]
     ferm_summary = aggregate_trials(ferm_trials)
@@ -135,6 +147,7 @@ def main(argv: List[str] | None = None):
         "memory_mb_before": mem_before,
         "memory_mb_after": mem_after,
         "environment": {"python": sys.version, "platform": sys.platform},
+        "scenario": scenario_meta,
     }
 
     out_json = json.dumps(report, indent=2)

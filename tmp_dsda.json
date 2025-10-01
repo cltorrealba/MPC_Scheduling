@@ -1,0 +1,49 @@
+{
+  "config_hash": "41644e58e6518c20",
+  "routes": [
+    "G",
+    "X",
+    "F",
+    "HMF",
+    "ACT"
+  ],
+  "entries": [
+    {
+      "mask": 5,
+      "active_routes": [
+        "G",
+        "F"
+      ],
+      "objective": -0.9208981063182375,
+      "ethanol_final": 0.9208981063182375,
+      "status": "optimal",
+      "solve_time_s": 0.14860224723815918
+    },
+    {
+      "mask": 23,
+      "active_routes": [
+        "G",
+        "X",
+        "F",
+        "ACT"
+      ],
+      "objective": -1.9242334380465125,
+      "ethanol_final": 1.9242334380465125,
+      "status": "optimal",
+      "solve_time_s": 0.08666014671325684
+    }
+  ],
+  "best": {
+    "mask": 23,
+    "active_routes": [
+      "G",
+      "X",
+      "F",
+      "ACT"
+    ],
+    "objective": -1.9242334380465125,
+    "ethanol_final": 1.9242334380465125,
+    "status": "optimal",
+    "solve_time_s": 0.08666014671325684
+  }
+}
