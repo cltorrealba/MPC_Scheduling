@@ -76,6 +76,8 @@ python -m biorefinery.scripts.run_mpc --scenario base
 ```
 
 ## Estado del Refactor (Resumen)
+Referencia detallada de objetivos y backlog: ver `biorefinery/docs/ROADMAP_FASE2.md`.
+
 - Extracción modular de neighborhoods, evaluación, DSDA, solver fallback y reformulación externa.
 - Logging centralizado (`biorefinery.logging_config`).
 - Pruebas unitarias iniciales (neighborhoods, line search) bajo `tests/`.

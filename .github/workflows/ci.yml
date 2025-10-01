@@ -6,23 +6,62 @@ on:
   pull_request:
     branches: [ main, master, repo-cleanup/** ]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  tests:
+  fast:
+    name: Fast tests (core smoke)
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11"]
+        python-version: ["3.10"]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Install (dev)
         run: |
           python -m pip install --upgrade pip
           pip install -e .[dev]
-      - name: Run tests
+      - name: Fast subset
+        run: |
+          # Target only the lightweight tests (naming pattern or quick modules)
+          pytest -k "api_contract or dsda_minimal or scheduling_minimal or scenario_loader or plot_enmpc_quick" --maxfail=1 -q
+
+  extended:
+    name: Extended tests (full matrix)
+    needs: fast
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Install (dev)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Full test suite
         run: |
           pytest --maxfail=1 --disable-warnings -q

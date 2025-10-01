@@ -143,6 +143,22 @@ def run_enmpc(args):
         current_hash = _config_hash(args)
         if prev_hash and prev_hash != current_hash and not getattr(args,'ignore_config_hash',False):
             raise ValueError(f"Configuration hash mismatch: prev={prev_hash} current={current_hash}. Use --ignore-config-hash to override.")
+        # Optional param_hash guard (only if both present and --hash-params requested now)
+        prev_param_hash = meta_prev.get('param_hash')
+        # Only enforce if previous run stored param_hash AND current user wants param hashing
+        if getattr(args,'hash_params', False) and prev_param_hash and not getattr(args,'ignore_param_hash', False):
+            # Build a tiny temp model to compute current param hash
+            try:
+                from biorefinery.models.api_contract import FermentationConfig, build_fermentation_model_v2
+                cfg_tmp = FermentationConfig(horizon_h=args.horizon_time_h, nfe=args.nfe,
+                                             include_kinetics=True, detailed_kinetics=args.detailed,
+                                             enable_mass_balance=True)
+                tmp_res = build_fermentation_model_v2(cfg_tmp)
+                current_param_hash = tmp_res.param_hash
+            except Exception:
+                current_param_hash = None
+            if current_param_hash and current_param_hash != prev_param_hash:
+                raise ValueError(f"Parameter hash mismatch: prev={prev_param_hash} current={current_param_hash}. Use --ignore-param-hash to override.")
         records = prev.get('records', [])
         traj = prev.get('trajectory', {})
         trajectory_time = traj.get('time_s', [])
@@ -435,6 +451,7 @@ def parse_args():
     p.add_argument('--ignore-config-hash', action='store_true', help='Allow resume even if configuration hash differs')
     p.add_argument('--drift-exclude-holdup', action='store_true', help='Exclude hold_up term from drift metrics')
     p.add_argument('--hash-params', action='store_true', help='Include a stable hash of selected model parameters in meta (param_hash)')
+    p.add_argument('--ignore-param-hash', action='store_true', help='Allow resume even if parameter hash differs (when --hash-params enabled)')
     p.add_argument('--seed', type=int, default=None, help='Random seed for disturbances')
     p.add_argument('--checkpoint-interval', type=int, default=0, help='Write intermediate JSON every N iterations (uncompressed)')
     p.add_argument('--resume-from', default=None, help='Resume from existing ENMPC JSON (must be uncompressed)')

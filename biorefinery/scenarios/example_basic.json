@@ -1,0 +1,36 @@
+{
+  "name": "example_basic",
+  "description": "Minimal scenario tying a short fermentation horizon with a 2-step scheduling chain.",
+  "version": "v1.0",
+  "seed": 42,
+  "tags": ["demo", "test"],
+  "fermentation": {
+    "horizon_h": 6.0,
+    "nfe": 3,
+    "total_elements_reference": 50,
+    "include_kinetics": true,
+    "detailed_kinetics": false,
+    "enable_mass_balance": true,
+    "include_dilution": false,
+    "feed_control": false,
+    "initial_concentrations": {"G": 10.0, "X": 5.0, "Eth": 0.0},
+    "initial_hold_up": 800.0
+  },
+  "scheduling": {
+    "horizon_h": 6.0,
+    "n_periods": 6,
+    "tasks": [
+      {"name": "T1", "inputs": {"A": 1.0}, "outputs": {"B": 1.0}, "units": ["U1"], "min_batch": 5, "max_batch": 10, "process_time_h": 1.0},
+      {"name": "T2", "inputs": {"B": 1.0}, "outputs": {"C": 1.0}, "units": ["U1"], "min_batch": 5, "max_batch": 10, "process_time_h": 1.0}
+    ],
+    "units": [
+      {"name": "U1", "kind": "reactor"}
+    ],
+    "states": ["A", "B", "C"],
+    "initial_inventory": {"A": 50.0},
+    "storage_capacity": {"A": 1000, "B": 1000, "C": 1000},
+    "demand": [
+      {"state": "C", "t": 5, "value": 10.0}
+    ]
+  }
+}

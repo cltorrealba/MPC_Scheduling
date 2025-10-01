@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BiorefineryScenario",
+  "type": "object",
+  "required": ["name", "seed", "fermentation", "scheduling"],
+  "properties": {
+    "name": {"type": "string"},
+    "description": {"type": "string"},
+  "version": {"type": "string", "pattern": "^v[0-9]+(\\.[0-9]+)*$"},
+    "seed": {"type": "integer", "minimum": 0},
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "fermentation": {
+      "type": "object",
+      "required": ["horizon_h", "nfe"],
+      "properties": {
+        "horizon_h": {"type": "number", "minimum": 0},
+        "nfe": {"type": "integer", "minimum": 1},
+        "total_elements_reference": {"type": "integer", "minimum": 1},
+        "include_kinetics": {"type": "boolean"},
+        "detailed_kinetics": {"type": "boolean"},
+        "enable_mass_balance": {"type": "boolean"},
+        "include_dilution": {"type": "boolean"},
+        "feed_control": {"type": "boolean"},
+        "initial_concentrations": {"type": "object", "additionalProperties": {"type": "number"}},
+        "initial_hold_up": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "scheduling": {
+      "type": "object",
+      "required": ["horizon_h", "n_periods"],
+      "properties": {
+        "horizon_h": {"type": "number", "minimum": 0},
+        "n_periods": {"type": "integer", "minimum": 1},
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "units", "min_batch", "max_batch", "process_time_h"],
+            "properties": {
+              "name": {"type": "string"},
+              "inputs": {"type": "object", "additionalProperties": {"type": "number"}},
+              "outputs": {"type": "object", "additionalProperties": {"type": "number"}},
+              "units": {"type": "array", "items": {"type": "string"}},
+              "min_batch": {"type": "number", "minimum": 0},
+              "max_batch": {"type": "number", "minimum": 0},
+              "process_time_h": {"type": "number", "minimum": 0}
+            },
+            "additionalProperties": false
+          }
+        },
+        "units": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}, "kind": {"type": "string"}}, "additionalProperties": false}},
+        "states": {"type": "array", "items": {"type": "string"}},
+        "initial_inventory": {"type": "object", "additionalProperties": {"type": "number"}},
+        "storage_capacity": {"type": "object", "additionalProperties": {"type": ["number", "string"]}},
+        "demand": {"type": "array", "items": {"type": "object", "required": ["state", "t", "value"], "properties": {"state": {"type": "string"}, "t": {"type": "integer", "minimum": 0}, "value": {"type": "number"}}, "additionalProperties": false}}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

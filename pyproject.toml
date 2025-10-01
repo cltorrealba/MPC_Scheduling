@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "jsonschema", "psutil"]
 
 [tool.setuptools]
 package-dir = {"" = "biorefinery/src"}

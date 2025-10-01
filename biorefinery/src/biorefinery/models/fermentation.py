@@ -427,7 +427,11 @@ def build_fermentation_model(
                 if t == m.t.first():
                     return pe.Constraint.Skip
                 self_term = m.C[t, 'HMF'] / (m.KIP_HMF + m.C[t, 'HMF'])
-                inhib_F = m.KI_HMF_G / (m.KI_HMF_G + m.C[t, 'F'])  # reuse KI_HMF_G as generic cross factor
+                # Prefer dedicated furfural inhibition constant if present (KI_HMF_F), otherwise reuse KI_HMF_G as placeholder
+                inhib_param = getattr(m, 'KI_HMF_F', None)
+                if inhib_param is None:
+                    inhib_param = m.KI_HMF_G
+                inhib_F = inhib_param / (inhib_param + m.C[t, 'F'])
                 expr_active = m.qmax_HMF * m.C[t, 'Cell'] * self_term * inhib_F
                 return m.q[t, 'HMF'] == m.route_config['HMF'] * expr_active
 

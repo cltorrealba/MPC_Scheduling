@@ -9,11 +9,7 @@ from __future__ import annotations
 import pyomo.environ as pe
 import time
 
-from biorefinery.optimization.external_ref import get_external_information, external_ref, dummy_logic
-from biorefinery.optimization.evaluation import evaluate_neighbors, do_line_search
-from biorefinery.optimization.solvers import solve_subproblem
-from biorefinery.optimization.neighborhoods import neighborhood_k_eq_2, find_actual_neighbors
-from biorefinery_models.Fermentation_Scheduling_and_MPC import dsda_enumeration
+from biorefinery.optimization.dsda_minimal import dsda_minimal
 
 # Minimal model factory -------------------------------------------------------
 
@@ -48,30 +44,20 @@ def main():
     ext_dict = { 'ext_bin': [m0.x1, m0.x2] }
 
     # Run enumeration with a very small time limit
-    solved, route, obj_route, best_path, dsda_time = dsda_enumeration(
-        k='2',
+    res = dsda_minimal(
         model_function=tiny_model,
         model_args=model_args,
-        starting_point=start_point,
         ext_dict=ext_dict,
-        ext_logic=dummy_logic,  # trivial logic
-        provide_starting_initialization=False,
-        subproblem_solver='conopt4',  # expect gams backend; if unavailable may fall back / error
-        subproblem_solver_options={'add_options': []},
-        iter_timelimit=5,
-        timelimit=10,
-        gams_output=False,
+        starting_point=start_point,
+        max_iters=10,
         tee=False,
-        global_tee=True,
-        rel_tol=0,
-        scaling=False,
-        stop_neigh_verif_when_improv=True,
     )
-
-    print("Route:", route)
-    print("Objectives:", obj_route)
-    print("Best final objective:", pe.value(solved.obj))
-    print("DSDA usertime (accum):", dsda_time)
+    solved = res['model']
+    print("Best vector:", res['best_vector'])
+    print("Best value:", res['best_value'])
+    print("History length:", len(res['history']))
+    print("Iterations:", res['iterations'])
+    print("Final objective (check):", pe.value(solved.obj))
     print("Elapsed wall time:", round(time.perf_counter() - start_time, 2), 's')
 
 if __name__ == "__main__":
