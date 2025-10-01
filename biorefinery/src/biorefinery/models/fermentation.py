@@ -34,6 +34,8 @@ def build_fermentation_model(
     initial_concentrations: Optional[Dict[str, float]] = None,
     include_dilution: bool = False,
     feed_concentrations: Optional[Dict[str, float]] = None,
+    enable_mass_balance: bool = False,
+    feed_control: bool = False,
 ) -> pe.ConcreteModel:
     """Create a minimal fermentation Pyomo model with optional kinetics and initial conditions.
 
@@ -60,6 +62,12 @@ def build_fermentation_model(
     feed_concentrations : Dict[str,float], optional
         Mapping species -> concentration in feed streams (assumed identical for all feeds);
         defaults to 0 for unspecified species when include_dilution=True.
+    enable_mass_balance : bool
+        If True, activates explicit hold-up balance M(t) and species dynamic balances with feed terms.
+        Default False keeps legacy-light skeleton unchanged (tests remain stable).
+    feed_control : bool
+        If True (with enable_mass_balance), exposes Fin(t) explicitly; otherwise Fin is derived from
+        component feeds (F_C5liquid + F_liquified_fibers). Placeholder for ENMPC loop.
 
     Returns
     -------
@@ -165,7 +173,7 @@ def build_fermentation_model(
         m.K1X = pe.Param(initialize=5.375237819425663, doc="pH dependency param (X) K1")
         m.K2X = pe.Param(initialize=0.009314982725521, doc="pH dependency param (X) K2")
 
-    # Feed related variables
+    # Feed related variables (always created for backward compatibility; control usage via flags)
     m.F_C5liquid = pe.Var(
         m.t,
         initialize=628 * (1 / 60) * (1 / 60),
@@ -178,6 +186,28 @@ def build_fermentation_model(
         within=pe.NonNegativeReals,
         bounds=(0, 2 * 2487 * (1 / 60) * (1 / 60)),
     )
+
+    # Overall feed flow Fin(t) only relevant when enable_mass_balance.
+    if enable_mass_balance:
+        if feed_control:
+            m.Fin = pe.Var(m.t, initialize=0.0, within=pe.NonNegativeReals)
+        else:
+            # Fin derived later by constraint equality to component feeds sum
+            m.Fin = pe.Var(m.t, initialize=0.0, within=pe.NonNegativeReals)
+
+    # Feed composition Cin_j (constant over time for now). Use provided feed_concentrations or zeros.
+    if enable_mass_balance:
+        _cin_init = {}
+        for sp in m.j:
+            if feed_concentrations and sp in feed_concentrations:
+                _cin_init[sp] = feed_concentrations[sp]
+            else:
+                _cin_init[sp] = 0.0
+        m.Cin = pe.Param(m.j, initialize=_cin_init, mutable=True, doc="Feed composition [g/kg]")
+
+    # Initial hold-up parameter for mass balance mode (simple default, can be overridden later)
+    if enable_mass_balance:
+        m.M0 = pe.Param(initialize=1000.0, mutable=True, doc="Initial reactor hold-up [kg]")
 
     # Simplified species concentrations (initially zero; real init handled externally)
     m.C = pe.Var(m.t, m.j, initialize=0, within=pe.NonNegativeReals, bounds=(0, 1000))
@@ -213,28 +243,85 @@ def build_fermentation_model(
         # R[t,r] product/aggregate reaction formation rates
         m.R = pe.Var(m.t, m.product_reactions, within=pe.NonNegativeReals)
 
-    # Basic feed mass balance skeleton
-    def _Diff_mass(m, t):
-        if t == m.t.first() and m.current_starting_time == 0:
-            return m.M[t] == 1.0  # placeholder initial M0
-        elif t == m.t.first():
-            return pe.Constraint.Skip  # would link previous batch state
-        else:
-            return m.dMdt[t] == m.final_time * (m.F_C5liquid[t] + m.F_liquified_fibers[t])
+    # Mass & species balances
+    if enable_mass_balance:
+        # Total mass balance with option to derive Fin
+        def _fin_link(m, t):
+            # If feed_control False, Fin must equal sum of component feeds; else user free to set Fin
+            if not feed_control:
+                return m.Fin[t] == m.F_C5liquid[t] + m.F_liquified_fibers[t]
+            return pe.Constraint.Skip
+        m.fin_link = pe.Constraint(m.t, rule=_fin_link)
 
-    m.Diff_mass = pe.Constraint(m.t, rule=_Diff_mass)
+        def _mass_balance(m, t):
+            if t == m.t.first() and m.current_starting_time == 0:
+                return m.M[t] == m.M0
+            elif t == m.t.first():
+                # For subsequent horizons in ENMPC loop, user expected to fix M[first] externally
+                return pe.Constraint.Skip
+            else:
+                return m.dMdt[t] == m.final_time * m.Fin[t]
+        m.mass_balance = pe.Constraint(m.t, rule=_mass_balance)
+
+        # Species dynamic balances (link kinetics if available). Units consistent with legacy scaling approach.
+        if include_kinetics:
+            def _species_balance(m, t, sp):
+                if t == m.t.first() and m.current_starting_time == 0:
+                    # Initial condition already fixed for provided species; skip equation to avoid overconstraint
+                    return pe.Constraint.Skip
+                elif t == m.t.first():
+                    return pe.Constraint.Skip  # hand-off from previous horizon handled by fixing values externally
+                # Source term from kinetics
+                kinetic_term = 0.0
+                if sp in m.kinetic_species:
+                    # Substrate consumption: -q
+                    kinetic_term -= m.q[t, sp]
+                if sp == 'Eth':
+                    kinetic_term += m.R[t, 'Eth']
+                if sp == 'CO2':
+                    kinetic_term += m.R[t, 'CO2_total']
+                if sp == 'ACT':
+                    # Net acetate = produced from HMF minus uptake (if route ACT active)
+                    kinetic_term += m.R[t, 'ACT_from_HMF']
+                    if 'ACT' in m.kinetic_species:
+                        kinetic_term -= m.q[t, 'ACT']
+                # Other species currently have no kinetic source term placeholder
+                # Dynamic balance: M dC/dt = final_time * ( Fin (Cin - C) + M * kinetic_term )
+                return m.M[t] * m.dCdt[t, sp] == m.final_time * ( m.Fin[t] * (m.Cin[sp] - m.C[t, sp]) + m.M[t] * kinetic_term )
+            m.species_balance = pe.Constraint(m.t, m.j, rule=_species_balance)
+        else:
+            # Simpler form ignoring kinetics (kinetic_term=0)
+            def _species_balance_simple(m, t, sp):
+                if t == m.t.first() and m.current_starting_time == 0:
+                    return pe.Constraint.Skip
+                elif t == m.t.first():
+                    return pe.Constraint.Skip
+                return m.M[t] * m.dCdt[t, sp] == m.final_time * ( m.Fin[t] * (m.Cin[sp] - m.C[t, sp]) )
+            m.species_balance = pe.Constraint(m.t, m.j, rule=_species_balance_simple)
+    else:
+        # Preserve original lightweight mass placeholder (Diff_mass) for backward compatibility
+        def _Diff_mass(m, t):
+            if t == m.t.first() and m.current_starting_time == 0:
+                return m.M[t] == 1.0  # placeholder initial M0
+            elif t == m.t.first():
+                return pe.Constraint.Skip  # would link previous batch state
+            else:
+                return m.dMdt[t] == m.final_time * (m.F_C5liquid[t] + m.F_liquified_fibers[t])
+        m.Diff_mass = pe.Constraint(m.t, rule=_Diff_mass)
 
     # Phase-wise feed logic (reduced form)
+    # Phase-wise feed logic (kept active irrespective of enable_mass_balance; later helper will override values)
     def _phase_feed_assign(m, t):
         abs_t = m.current_starting_time + t * (m.current_final_time - m.current_starting_time)
         if abs_t <= 10 * 60 * 60:
-            return pe.Constraint.Skip  # initial inoculum phase (defaults stand)
+            return pe.Constraint.Skip  # inoculum phase uses initial values
         elif abs_t <= 70 * 60 * 60:
-            return pe.Constraint.Skip
+            return pe.Constraint.Skip  # fed-batch phase – values can be optimized externally
         else:
-            # batch phase: flows zeroed
+            # batch phase: optionally enforce zero feeds (unless feed_control keeps them free for experimentation)
+            if feed_control:
+                return pe.Constraint.Skip
             return m.F_C5liquid[t] + m.F_liquified_fibers[t] == 0
-
     m.phase_feed_assign = pe.Constraint(m.t, rule=_phase_feed_assign)
 
     # ------------------------------------------------------------------

@@ -52,14 +52,16 @@ def solve_subproblem(m, subproblem_solver='conopt4', subproblem_solver_options=N
 
     used_gams = False
     opt = None
-    # First attempt: GAMS interface
+    # First attempt: ALWAYS try GAMS interface (even if subproblem_solver is something else) to keep
+    # consistent ordering for tests expecting a GAMS attempt before direct solver.
     try:
         solvername = 'gams'
         if subproblem_solver_options is not None:
             subproblem_solver_options.setdefault('add_options', [])
             subproblem_solver_options['add_options'].append(f'option reslim={timelimit};')
             subproblem_solver_options['add_options'].append(f'option optcr={rel_tol};')
-        if subproblem_solver.lower() == 'octeract':
+        # Pass through desired solver to gams wrapper if not octeract
+        if subproblem_solver and subproblem_solver.lower() == 'octeract':
             opt = SolverFactory(solvername)
         else:
             opt = SolverFactory(solvername, solver=subproblem_solver)

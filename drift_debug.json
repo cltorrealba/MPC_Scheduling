@@ -1,0 +1,382 @@
+{
+  "meta": {
+    "total_time_h": 24.0,
+    "step_time_h": 6.0,
+    "horizon_time_h": 12.0,
+    "iterations": 4,
+    "solver": "ipopt",
+    "constant_policy": false,
+    "economic_objective": false,
+    "economic_objective_exact": false,
+    "disturbance_alpha": 0.0,
+    "execution_disturbance_alpha": 0.05,
+    "export_step_only": false,
+    "seed": 42,
+    "compressed_applied": false,
+    "checkpoint_interval": 0,
+    "resume_source": null,
+    "max_iterations": null
+  },
+  "records": [
+    {
+      "iteration": 0,
+      "t_start_s": 0.0,
+      "t_end_s": 21600.0,
+      "status": "other",
+      "applied_control": {
+        "F_liquified_fibers": 0.6908333333333334,
+        "F_C5liquid": 0.0
+      },
+      "economic_metric": 0.05,
+      "ethanol_conc_end": 0.0,
+      "hold_up_end": 0.9921921819685271,
+      "neg_species": [],
+      "ethanol_non_monotonic": false,
+      "drift_l2": 0.0,
+      "drift_max_abs": 0.0,
+      "predicted_end_state": {
+        "C": {
+          "G": 0.0,
+          "X": 0.0,
+          "Eth": 0.0,
+          "Cell": 0.0,
+          "F": 0.0,
+          "HMF": 0.0,
+          "ACT": 0.0,
+          "CO2": 0.0
+        },
+        "M": 1.0
+      },
+      "realized_end_state": {
+        "C": {
+          "G": 0.0,
+          "X": 0.0,
+          "Eth": 0.0,
+          "Cell": 0.0,
+          "F": 0.0,
+          "HMF": 0.0,
+          "ACT": 0.0,
+          "CO2": 0.0
+        },
+        "M": 0.9921921819685271
+      }
+    },
+    {
+      "iteration": 1,
+      "t_start_s": 21600.0,
+      "t_end_s": 43200.0,
+      "status": "other",
+      "applied_control": {
+        "F_liquified_fibers": 0.6908333333333334,
+        "F_C5liquid": 0.0
+      },
+      "economic_metric": 0.0,
+      "ethanol_conc_end": 0.0,
+      "hold_up_end": 1.008926568387591,
+      "neg_species": [],
+      "ethanol_non_monotonic": false,
+      "drift_l2": 0.0,
+      "drift_max_abs": 0.0,
+      "predicted_end_state": {
+        "C": {
+          "G": 0.0,
+          "X": 0.0,
+          "Eth": 0.0,
+          "Cell": 0.0,
+          "F": 0.0,
+          "HMF": 0.0,
+          "ACT": 0.0,
+          "CO2": 0.0
+        },
+        "M": 1.0
+      },
+      "realized_end_state": {
+        "C": {
+          "G": 0.0,
+          "X": 0.0,
+          "Eth": 0.0,
+          "Cell": 0.0,
+          "F": 0.0,
+          "HMF": 0.0,
+          "ACT": 0.0,
+          "CO2": 0.0
+        },
+        "M": 1.008926568387591
+      }
+    },
+    {
+      "iteration": 2,
+      "t_start_s": 43200.0,
+      "t_end_s": 64800.0,
+      "status": "other",
+      "applied_control": {
+        "F_liquified_fibers": 0.6908333333333334,
+        "F_C5liquid": 0.0
+      },
+      "economic_metric": 0.0,
+      "ethanol_conc_end": 0.0,
+      "hold_up_end": 0.9592745843380148,
+      "neg_species": [],
+      "ethanol_non_monotonic": false,
+      "drift_l2": 0.0,
+      "drift_max_abs": 0.0,
+      "predicted_end_state": {
+        "C": {
+          "G": 0.0,
+          "X": 0.0,
+          "Eth": 0.0,
+          "Cell": 0.0,
+          "F": 0.0,
+          "HMF": 0.0,
+          "ACT": 0.0,
+          "CO2": 0.0
+        },
+        "M": 1.0
+      },
+      "realized_end_state": {
+        "C": {
+          "G": 0.0,
+          "X": 0.0,
+          "Eth": 0.0,
+          "Cell": 0.0,
+          "F": 0.0,
+          "HMF": 0.0,
+          "ACT": 0.0,
+          "CO2": 0.0
+        },
+        "M": 0.9592745843380148
+      }
+    },
+    {
+      "iteration": 3,
+      "t_start_s": 64800.0,
+      "t_end_s": 86400.0,
+      "status": "other",
+      "applied_control": {
+        "F_liquified_fibers": 0.6908333333333334,
+        "F_C5liquid": 0.0
+      },
+      "economic_metric": 0.0,
+      "ethanol_conc_end": 0.0,
+      "hold_up_end": 1.0052040631273227,
+      "neg_species": [],
+      "ethanol_non_monotonic": false,
+      "drift_l2": 0.0,
+      "drift_max_abs": 0.0,
+      "predicted_end_state": {
+        "C": {
+          "G": 0.0,
+          "X": 0.0,
+          "Eth": 0.0,
+          "Cell": 0.0,
+          "F": 0.0,
+          "HMF": 0.0,
+          "ACT": 0.0,
+          "CO2": 0.0
+        },
+        "M": 1.0
+      },
+      "realized_end_state": {
+        "C": {
+          "G": 0.0,
+          "X": 0.0,
+          "Eth": 0.0,
+          "Cell": 0.0,
+          "F": 0.0,
+          "HMF": 0.0,
+          "ACT": 0.0,
+          "CO2": 0.0
+        },
+        "M": 1.0052040631273227
+      }
+    }
+  ],
+  "trajectory": {
+    "time_s": [
+      0.0,
+      14399.9856,
+      21600.0,
+      35999.9856,
+      43200.0,
+      57599.9856,
+      64800.0,
+      79199.9856
+    ],
+    "species": {
+      "G": [
+        10.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "X": [
+        5.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Eth": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Cell": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "F": [
+        0.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "HMF": [
+        0.1,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ACT": [
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "CO2": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "hold_up": [
+      1.0,
+      1.0,
+      0.9921921819685271,
+      1.0,
+      1.008926568387591,
+      1.0,
+      0.9592745843380148,
+      1.0
+    ],
+    "q_series": {
+      "G": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "X": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "F": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "HMF": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ACT": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "R_series": {
+      "Eth": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ACT_from_HMF": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "CO2_total": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  }
+}

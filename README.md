@@ -81,11 +81,6 @@ python -m biorefinery.scripts.run_mpc --scenario base
 - Pruebas unitarias iniciales (neighborhoods, line search) bajo `tests/`.
 - `extvars_gdp_to_mip` es actualmente un stub (passthrough) documentado en `docs/ARCHITECTURE.md`.
 - Nuevo builder incremental de modelo de fermentación (`biorefinery.models.fermentation.build_fermentation_model`) para migrar gradualmente la lógica DAE.  
-  *Flag `include_kinetics=True` añade parámetros cinéticos (rendimientos, qmax, constantes de inhibición, parámetros pH) y variables de tasas `q` (uptake) y `R` (pools de producción). `detailed_kinetics=True` activa expresiones completas (pH Gauss + inhibiciones cruzadas + reformulación log-exp para evitar derivadas singulares). Extensiones recientes: balances diferenciales ampliados (G, X, Eth, F, HMF, ACT, Cell, CO2), soporte de dilución (`include_dilution=True` + `feed_concentrations`), parámetro mutable `route_config`, helpers `set_route_activation`, `set_routes_activation`, `get_route_external_variables`, y wrapper `optimize_routes_local_descent` para búsquedas discretas ligeras. Todas las rutas desactivadas fuerzan exactamente `q=0` (sin residuos denormales) vía fijación explícita de variables y gating multiplicativo.*
-
-## Ejecutar Pruebas
-Después de instalar con extras de desarrollo:
-```powershell
 pytest
 ```
 Para mayor detalle de cobertura:
@@ -131,9 +126,6 @@ Dependencias núcleo: Pyomo, NumPy, pandas, Matplotlib, SciPy.
 Extras de desarrollo: pytest + pytest-cov.
 Solver recomendado para continuo: Ipopt (instalación externa no incluida). Para MINLP considerar integrar BONMIN/SCIP vía Pyomo o GAMS si licencia disponible.
 
-## Licencia y Origen
-Este trabajo deriva de un repositorio académico original (créditos al autor original). Este fork se limita a reorganización y reproducibilidad.
-
 ---
 _Si algo falla al correr el script original, documentar el error exacto y se añadirá sección de troubleshooting._
 
@@ -158,29 +150,13 @@ Roadmap cinético actualizado (resumido):
 5. (Hecho) Toggles discretos y descenso local ligero DSDA.
 6. (Pendiente) Validación cuantitativa vs script legado + escenarios de sensibilidad.
 
-Ejemplo rápido:
-```python
-from biorefinery.models.fermentation import build_fermentation_model, set_route_activation
-
 m = build_fermentation_model(include_kinetics=True, detailed_kinetics=True,
                initial_concentrations={'G':10,'X':5,'Eth':0,'Cell':1,'F':0,'ACT':0,'HMF':0})
-
-set_route_activation(m,'G', False)
-print('Ruta G activa?', m.route_config['G'].value)
-set_route_activation(m,'G', True)
-print('Ruta G activa?', m.route_config['G'].value)
 
 print('Params qmax presentes:', [name for name,_ in m.component_map().items() if str(name).startswith('qmax_')])
 ```
-
-### Mini ejemplo de exploración DSDA conceptual
-```python
 import pyomo.environ as pe
 from biorefinery.models.fermentation import build_fermentation_model, set_route_activation
-
-m = build_fermentation_model(include_kinetics=True, detailed_kinetics=True,
-               initial_concentrations={'G':10,'X':5,'Eth':0,'Cell':1,'F':0,'ACT':0,'HMF':0})
-
 routes = ['G','X','F','HMF','ACT']
 best = None
 for r in routes:
@@ -269,6 +245,104 @@ res = optimize_routes_local_descent(m, evaluator, max_iters=5)
 print('Mejor vector:', res['best_vector'])
 print('Objetivo:', res['best_value'])
 ```
+
+## ENMPC (Económico / NMPC) Herramientas y Reproducibilidad
+
+Se añadieron scripts utilitarios y banderas para ejecutar, pausar, reanudar y post‑procesar corridas ENMPC reproducibles.
+
+### Script principal
+`biorefinery/src/biorefinery/scripts/run_enmpc.py`
+
+Flags clave:
+
+- `--total-time-h`, `--step-time-h`, `--horizon-time-h`: tiempos total, paso aplicado y horizonte de predicción.
+- `--nfe`, `--total-elements`: granularidad de discretización.
+- `--economic-objective` / `--economic-objective-exact`: objetivo económico (surrogado o simbólico exacto).
+- `--constant-policy`: desactiva optimización (usa último control aplicado) para pruebas rápidas deterministas.
+- `--disturbance-alpha`: ruido relativo multiplicativo en composiciones de alimentación (planificación).
+- `--execution-disturbance-alpha`: ruido aplicado después de predecir para simular deriva (drift).
+- `--force-nonzero-drift`: garantiza una deriva mínima cuando el estado previsto es todo cero y hay ruido de ejecución.
+- `--drift-exclude-holdup`: excluye el `hold_up` del cálculo de métricas de drift.
+- `--export-step-only`: comprime la trayectoria a puntos de frontera de cada paso (reduce tamaño JSON).
+- `--no-rates`: omite series cinéticas `q_series` y `R_series` para reducir tamaño.
+- `--hash-params`: incluye `param_hash` (SHA256 truncado de parámetros cinéticos clave) para asegurar reproducibilidad paramétrica.
+- `--checkpoint-interval N`: escribe un checkpoint JSON (sin comprimir) cada N iteraciones.
+- `--resume-from archivo.json`: reanuda una corrida previa (verifica `config_hash`).
+- `--ignore-config-hash`: permite reanudar aunque haya divergencia de configuración (se desaconseja salvo uso experimental).
+- `--max-iterations M`: limita cuántas iteraciones nuevas ejecutar (útil para dividir corridas largas en etapas).
+
+Metadata añadida en `meta` del JSON:
+
+| Campo | Descripción |
+|-------|-------------|
+| `config_hash` | Hash estable de parámetros de ejecución (config temporal). |
+| `param_hash` | Hash de parámetros cinéticos seleccionados (`--hash-params`). |
+| `code_commit` | `git rev-parse --short HEAD` si disponible. |
+| `drift_definition` | Texto describiendo cómo se computó la deriva. |
+| `compressed_applied` | `true` si se aplicó compresión (step only). |
+| `export_step_only` | Flag original solicitado por el usuario. |
+| `no_rates` | Indica si se omitieron series `q` y `R`. |
+
+### Checkpoint & Resume
+1. Ejecutar primera etapa: `python run_enmpc.py --total-time-h 120 --max-iterations 5 --output etapa1.json --checkpoint-interval 2`
+2. Reanudar: `python run_enmpc.py --resume-from etapa1.json --max-iterations 5 --output etapa2.json`
+3. Unir: ver script `merge_enmpc_runs.py`.
+
+### Fusión y Compresión Post‑hoc
+`biorefinery/src/biorefinery/scripts/merge_enmpc_runs.py`
+
+Permite concatenar varios JSON (no comprimidos) que comparten `config_hash`:
+
+```powershell
+python biorefinery/src/biorefinery/scripts/merge_enmpc_runs.py etapa1.json etapa2.json --output merged.json
+```
+
+O con compresión final:
+
+```powershell
+python biorefinery/src/biorefinery/scripts/merge_enmpc_runs.py etapa1.json etapa2.json --output merged_step.json --compress
+```
+
+Si se cambiaron flags y difiere el hash se forzará error salvo `--allow-hash-mismatch`.
+
+### Validación Estructural
+`biorefinery/src/biorefinery/scripts/validate_enmpc.py`
+
+Comprueba consistencia interna (longitudes, presencia de campos meta) y opcionalmente exige `config_hash`:
+
+```powershell
+python biorefinery/src/biorefinery/scripts/validate_enmpc.py merged.json --print-summary
+```
+
+### Exportación a CSV
+`biorefinery/src/biorefinery/scripts/export_enmpc_csv.py`
+
+Genera dos CSV: trayectorias y controles.
+
+```powershell
+python biorefinery/src/biorefinery/scripts/export_enmpc_csv.py merged.json --prefix resultados/run1 --include-rates
+```
+
+Produce:
+- `resultados/run1_trajectory.csv`
+- `resultados/run1_controls.csv`
+
+### Flujo Recomendado Completo
+1. Correr etapa(s) con checkpoints.
+2. Reanudar hasta cubrir horizonte total.
+3. Fusionar (`merge_enmpc_runs.py`).
+4. Validar (`validate_enmpc.py`).
+5. (Opcional) Comprimir o exportar CSV para análisis / plotting rápido.
+6. Versionar JSON + CSV junto con commit (`code_commit`).
+
+### Pruebas Automatizadas
+Se añadieron tests:
+- `test_enmpc_merge.py`: fusión y compresión.
+- `test_enmpc_tools.py`: export y validación.
+- Otros: resume, drift, meta/no-rates, hash guard.
+
+Esto asegura que cualquier cambio futuro en el loop NMPC preserve reproducibilidad y formato estable.
+
 
 ### Enforzamiento Exacto de Cero en Rutas Desactivadas
 Se eliminó la necesidad de restricciones tipo Big-M: ahora cada ecuación cinética es una igualdad `q = route_config * expr` y adicionalmente el helper fija/des fija la variable. Esto evita residuos numéricos (~1e-40) que antes rompían aserciones estrictas en pruebas.
@@ -362,4 +436,151 @@ Si el hash almacenado difiere del calculado en la ejecución actual y no se ha d
 ```powershell
 set BIOREF_REFRESH_BASELINE=1; pytest -k validation_baseline -q
 ```
+
+## ENMPC (Economic Nonlinear MPC) Receding Horizon
+
+Loop receding horizon parametrizable para control económico / maximización de etanol con comparación a política constante.
+
+### Concepto
+- Horizonte de predicción H (`--horizon-time-h`).
+- Paso de aplicación Δ (`--step-time-h`), Δ ≤ H.
+- Receding horizon: resuelve, aplica primera porción, avanza estado y repite.
+- Objetivo: etanol (por defecto) o métrica económica proxy (`--economic-objective`).
+- Perturbaciones en composiciones de alimentación (`--disturbance-alpha`).
+- Warm start de controles: se reutiliza el último control aplicado como inicialización en iteraciones siguientes.
+
+### Flags Clave
+`--total-time-h`, `--horizon-time-h`, `--step-time-h`, `--nfe`, `--total-elements`, `--economic-objective`, `--constant-policy`, `--disturbance-alpha`, `--solver`, `--output`, `--tee`.
+
+### Salida JSON
+```
+{
+  "meta": { ... },
+  "trajectory": {
+     "time_s": [...],
+     "species": {"G": [...], ...},
+     "hold_up": [...],
+     "q_series": {"G": [...], ...},          # exportado si cinética activa
+     "R_series": {"Eth": [...], ...}         # exportado si cinética activa
+  },
+  "records": [
+     {"iteration":0, "applied_control":{...}, "economic_metric":x,
+      "neg_species":[], "ethanol_non_monotonic":false, ...}, ...]
+}
+```
+
+### Nuevos Flags en Records
+- `neg_species`: lista de especies con valores negativos detectados (tolerancia -1e-9) durante el intervalo aplicado.
+- `ethanol_non_monotonic`: True si la serie de etanol en el intervalo presenta decrementos mayores a 1e-8.
+
+### Ejecuciones Ejemplo
+```powershell
+python -m biorefinery.scripts.run_enmpc --total-time-h 72 --horizon-time-h 24 --step-time-h 6 \
+  --nfe 6 --total-elements 72 --output enmpc_run.json
+
+python -m biorefinery.scripts.run_enmpc --total-time-h 72 --horizon-time-h 24 --step-time-h 6 \
+  --nfe 6 --total-elements 72 --constant-policy --output constant_run.json
+
+python -m biorefinery.scripts.run_enmpc --total-time-h 72 --horizon-time-h 24 --step-time-h 6 \
+  --nfe 6 --total-elements 72 --economic-objective --disturbance-alpha 0.05 --seed 2025 \
+  --output enmpc_econ_dist.json
+```
+
+### Plots Comparativos
+```powershell
+python -m biorefinery.scripts.plot_enmpc_vs_constant --enm enmpc_run.json --const constant_run.json --prefix figs_enmpc
+```
+Genera: concentraciones, hold-up, controles, métrica económica.
+
+### Tests
+- `test_enmpc_basic.py`: estructura, divergencia control vs constante.
+- `test_enmpc_economic.py`: objetivo económico + presencia q_series / R_series.
+- `test_enmpc_drift.py`: métricas de drift bajo perturbación de ejecución.
+- `test_enmpc_resume.py`: flujo parcial y reanudación incremental.
+
+### Checkpoints, Resume y Estados Pred/Real (Novedad)
+El runner `run_enmpc` ahora soporta resiliencia y análisis de discrepancias entre predicción y realización:
+
+Flags nuevos:
+- `--checkpoint-interval N`  Escribe el JSON (sin compresión) cada N iteraciones. Útil para ejecuciones largas o entornos inestables.
+- `--resume-from archivo.json`  Reanuda una corrida previa (debe provenir de salida no comprimida). Reconstruye las series y continúa agregando iteraciones.
+- `--max-iterations M`  Limita el número de iteraciones nuevas (ideal para dividir la corrida en segmentos). Si no se especifica, ejecuta todas las restantes.
+- `--execution-disturbance-alpha a`  Aplica una perturbación aleatoria post-predicción a los estados al final del paso simulando discrepancias de ejecución.
+- `--export-step-only`  (Ya existente) ahora se aplica solo al final; las corridas intermedias para reanudación deben permanecer sin compresión.
+- `--no-rates`  Omite la exportación de `q_series` y `R_series` (ahorra tamaño si solo importan concentraciones).
+- `--force-nonzero-drift`  Cuando el estado predicho es todo ceros y existe `--execution-disturbance-alpha`, asegura una deriva mínima para evitar métricas triviales.
+- `--ignore-config-hash`  Permite reanudar aunque cambien parámetros clave (normalmente bloqueado para reproducibilidad).
+- `--drift-exclude-holdup`  Excluye el término de hold-up del cálculo de drift.
+
+Cada `record` incluye ahora:
+- `predicted_end_state`: estado al final del paso según el modelo antes de perturbaciones (dict `{C: {sp: valor}, M: hold_up}`).
+- `realized_end_state`: estado luego de aplicar perturbación de ejecución.
+- `drift_l2`, `drift_max_abs`: métricas de desviación entre predicho y realizado (si `--execution-disturbance-alpha > 0`).
+
+Metadatos ampliados:
+```
+"compressed_applied": true/false,
+"checkpoint_interval": N | 0,
+"resume_source": "archivo.json" | null,
+"max_iterations": M | null
+"no_rates": true/false,
+"force_nonzero_drift": true/false,
+"drift_definition": "l2 and max abs over species + hold_up (pred vs realized after exec disturbance)",
+"config_hash": "<hash16>"   # SHA256 truncado de configuración relevante para detectar incompatibilidades de resume
+"code_commit": "<git short hash>" | null
+```
+
+Guard de reanudación:
+Al reanudar se compara `config_hash`; si difiere se aborta con error salvo que se pase `--ignore-config-hash`. Esto evita mezclar segmentos con configuración incompatible (p.ej. cambio de horizonte o activación de `--no-rates`).
+
+Exclusión de hold-up en drift:
+Con `--drift-exclude-holdup` las métricas se calculan solo sobre concentraciones de especies.
+
+Ejemplo de corrida segmentada y reanudación:
+```powershell
+# Primera iteración únicamente
+python -m biorefinery.scripts.run_enmpc --total-time-h 24 --horizon-time-h 12 --step-time-h 6 \
+  --nfe 3 --total-elements 24 --max-iterations 1 --output parcial.json
+
+# Reanudar hasta completar (resto de iteraciones)
+python -m biorefinery.scripts.run_enmpc --total-time-h 24 --horizon-time-h 12 --step-time-h 6 \
+  --nfe 3 --total-elements 24 --resume-from parcial.json --output completo.json
+
+# Generar versión comprimida (endpoints) una vez finalizado
+python -m biorefinery.scripts.run_enmpc --total-time-h 24 --horizon-time-h 12 --step-time-h 6 \
+  --nfe 3 --total-elements 24 --resume-from completo.json --export-step-only --output completo_compacto.json
+```
+
+Buenas prácticas:
+- Evitar usar `--export-step-only` en la corrida que se piensa reanudar (imposibilita resume).
+- Guardar logs de solver si se hace `--tee` para análisis de convergencia entre segmentos.
+- Fijar `--seed` para reproducibilidad completa de perturbaciones.
+
+La prueba `test_enmpc_resume.py` valida esta funcionalidad end-to-end.
+
+### Roadmap ENMPC
+- Mejora warm start (inicializar también derivadas y estado dual).
+- Serializar estimaciones pronóstico vs aplicado para cálculo de drift cuantitativo.
+- Multi-variable control + objetivos compuestos (p. ej. productividad + costo feed).
+- Integración DSDA intra-horizonte para decisiones discretas dinámicas.
+
+### Mejoras Recientes ENMPC (Extendidas)
+Nuevos flags en `run_enmpc`:
+- `--economic-objective-exact`: activa objetivo económico simbólico exacto (implica `--economic-objective`).
+- `--execution-disturbance-alpha`: factor de perturbación aplicado después de la predicción para simular desalineación (genera métricas de drift).
+- `--export-step-only`: comprime la trayectoria exportando solo estado inicial y puntos al final de cada paso Δ.
+- `--seed`: semilla para reproducibilidad de perturbaciones (feed y ejecución).
+
+Campos nuevos en `meta`:
+- `economic_objective_exact`, `execution_disturbance_alpha`, `export_step_only`, `seed`.
+
+Campos nuevos por `record`:
+- `drift_l2`: norma L2 de diferencia entre estado predicho y realizado (si hay perturbación de ejecución).
+- `drift_max_abs`: máximo absoluto de diferencias especie a especie.
+
+Compresión de trayectoria (`--export-step-only`): reduce tamaño del JSON para corridas largas manteniendo puntos relevantes para análisis de control.
+
+Tests añadidos:
+- `test_enmpc_economic.py`: objetivo económico exacto/surrogate y series cinéticas.
+- `test_enmpc_drift.py`: valida que las métricas de drift sean positivas bajo perturbación.
 
