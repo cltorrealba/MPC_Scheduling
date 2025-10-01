@@ -507,6 +507,24 @@ Checkpoints generados: `results/exp01/run_exp01_ck_001.json`, `..._ck_002.json`,
 
 Limpieza futura: se añadirá script `clean_outputs.py` para eliminar artefactos antiguos por patrón (JSON/CSV/PNG) con opción `--dry-run`.
 
+#### Procedimiento Recomendado de Limpieza (3 pasos)
+1. Mover artefactos sueltos a un directorio de staging:
+  ```powershell
+  $stamp = Get-Date -Format "yyyyMMdd_HHmm"
+  $stage = "results/root_stage_$stamp"; New-Item -ItemType Directory -Path $stage | Out-Null
+  Get-Item diag_*.json, overlay_*.png, overlay_*.csv -ErrorAction SilentlyContinue | Move-Item -Destination $stage
+  ```
+2. Generar snapshot reproducible (ZIP + MANIFEST):
+  ```powershell
+  python -m biorefinery.scripts.snapshot_results --inputs $stage --patterns *.json *.png *.csv \
+    --relative-to results --output snapshots/root_stage_$stamp.zip
+  ```
+3. Verificar y eliminar staging si el ZIP es válido:
+  ```powershell
+  Remove-Item -Recurse -Force $stage
+  ```
+Posteriormente usar `clean_outputs.py` con `--keep-latest` para rotación automatizada.
+
 ### Plots Comparativos
 ```powershell
 python -m biorefinery.scripts.plot_enmpc_vs_constant --enm enmpc_run.json --const constant_run.json --prefix figs_enmpc

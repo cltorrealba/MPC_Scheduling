@@ -1,0 +1,49 @@
+# Core Python ignores
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments / tooling
+.venv/
+.env/
+.idea/
+.vscode/
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Results & generated artifacts (added Fase 3 tooling)
+results/
+# Keep example data inside docs/examples/data (negate if needed)
+!docs/examples/data/**
+
+snapshots/
+diag_*.json
+overlay_*.png
+overlay_*.csv
+*_ck_*.json
+*.json.gz
+
+# DSDA caches and temporary run outputs
+*dsda_cache*.json
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Coverage / test
+.coverage
+htmlcov/
+pytest_cache/
+
+# Local notebooks outputs
+*.ipynb
+
