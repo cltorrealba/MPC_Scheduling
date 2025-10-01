@@ -1,0 +1,196 @@
+{
+  "meta": {
+    "horizon_h": 12.0,
+    "nfe": 4,
+    "sched_periods": 4
+  },
+  "modular": {
+    "final_ethanol_conc": 6.252947592465707,
+    "final_hold_up": 999.9995694261319,
+    "mapped_Cin": {
+      "G": 1.2422507537777428e-06,
+      "X": 6.211253768888714e-07,
+      "ACT": 1.0765127012899923e-07,
+      "HMF": 8.260747961707984e-09,
+      "F": 0.0
+    },
+    "prod_net": {
+      "G": 1.2422507537777428e-06,
+      "X": 6.211253768888714e-07,
+      "ACT": 1.0765127012899923e-07,
+      "HMF": 8.260747961707984e-09,
+      "F": -4.130373980853992e-08,
+      "Cell": 0.0
+    },
+    "scheduling_status": "optimal",
+    "fermentation_status": "optimal"
+  },
+  "legacy": {
+    "status": "not_optimal",
+    "solver_status": "warning",
+    "termination_condition": "other",
+    "final_ethanol_conc": 0.0001,
+    "final_hold_up": 1000,
+    "objective": 1,
+    "solver_name": "ipopt",
+    "nfe": 4,
+    "regularized": true,
+    "floor_M": 100.0,
+    "floor_C": 0.0001,
+    "warmstart": false,
+    "mass_slack": false,
+    "initial_mass_slack": true,
+    "cap_M": 5000.0,
+    "n_vars": 1301,
+    "n_cons": 1128,
+    "diagnostics": [
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,CS]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,XS]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,LS]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,C]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,G]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,X]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,F]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,E]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,AC]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,Cell]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,Eth]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,CO2]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,ACT]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,HMF]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.411237,Base]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,CS]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,XS]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,LS]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,C]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,G]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,X]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,F]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,E]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,AC]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,Cell]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,Eth]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,CO2]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,ACT]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,HMF]"
+      },
+      {
+        "violation": 10800000.0,
+        "constraint": "Diff_comp[0.5,Base]"
+      }
+    ],
+    "feed_align": false,
+    "feed_slack": false,
+    "smooth_fin_weight": 100.0,
+    "align_modular_init": false,
+    "scale_model": false,
+    "simple_feed": false,
+    "simple_feed_rate": null,
+    "normalized_feed": true,
+    "normalized_feed_scale": true,
+    "ipopt_max_iter": 1500,
+    "ipopt_tol": 1e-06,
+    "ipopt_acceptable_tol": 1e-05,
+    "ipopt_print_level": 4,
+    "normalized_feed_slack": false,
+    "normalized_feed_slack_weight": 1000000.0,
+    "normalized_feed_micro_slack": false,
+    "normalized_feed_micro_slack_budget": 0.01,
+    "normalized_feed_micro_slack_weight": 100000000.0,
+    "normalized_feed_micro_slack_usage": null,
+    "sync_fin_initial": true,
+    "elapsed_s": 1.4617621898651123
+  },
+  "comparison": {
+    "ethanol_conc_delta": 6.252847592465708,
+    "ethanol_conc_rel": 62528.475924657076,
+    "hold_up_delta": -0.0004305738681296134,
+    "hold_up_rel": -4.305738681296134e-07
+  }
+}

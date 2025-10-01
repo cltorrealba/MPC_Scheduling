@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "horizon_h": 12.0,
+    "nfe": 4,
+    "sched_periods": 4
+  },
+  "modular": {
+    "final_ethanol_conc": 6.252947592465707,
+    "final_hold_up": 999.9995694261319,
+    "mapped_Cin": {
+      "G": 1.2422507537777428e-06,
+      "X": 6.211253768888714e-07,
+      "ACT": 1.0765127012899923e-07,
+      "HMF": 8.260747961707984e-09,
+      "F": 0.0
+    },
+    "prod_net": {
+      "G": 1.2422507537777428e-06,
+      "X": 6.211253768888714e-07,
+      "ACT": 1.0765127012899923e-07,
+      "HMF": 8.260747961707984e-09,
+      "F": -4.130373980853992e-08,
+      "Cell": 0.0
+    },
+    "scheduling_status": "optimal",
+    "fermentation_status": "optimal"
+  },
+  "legacy": {
+    "status": "not_optimal",
+    "solver_status": "warning",
+    "termination_condition": "infeasible",
+    "final_ethanol_conc": 0.00010008617720559355,
+    "final_hold_up": 149.75919100690058,
+    "objective": 1,
+    "solver_name": "ipopt",
+    "nfe": 4,
+    "regularized": true,
+    "floor_M": 100.0,
+    "floor_C": 0.0001,
+    "warmstart": false,
+    "mass_slack": false,
+    "initial_mass_slack": false,
+    "cap_M": 5000.0,
+    "n_vars": 1326,
+    "n_cons": 1129,
+    "diagnostics": [
+      {
+        "violation": 99.99999900000091,
+        "constraint": "Diff_mass[0]"
+      },
+      {
+        "violation": 9.999000091072848e-05,
+        "constraint": "Diff_comp[0,C]"
+      },
+      {
+        "violation": 9.999000091021775e-05,
+        "constraint": "Diff_comp[0,Cell]"
+      },
+      {
+        "violation": 9.999000091019414e-05,
+        "constraint": "Diff_comp[0,CO2]"
+      },
+      {
+        "violation": 9.999000091019395e-05,
+        "constraint": "Diff_comp[0,Eth]"
+      },
+      {
+        "violation": 9.999000090909474e-05,
+        "constraint": "Diff_comp[0,G]"
+      },
+      {
+        "violation": 9.999000090909406e-05,
+        "constraint": "Diff_comp[0,X]"
+      },
+      {
+        "violation": 9.999000090909369e-05,
+        "constraint": "Diff_comp[0,LS]"
+      },
+      {
+        "violation": 9.999000090909277e-05,
+        "constraint": "Diff_comp[0,CS]"
+      },
+      {
+        "violation": 9.999000090909171e-05,
+        "constraint": "Diff_comp[0,AC]"
+      }
+    ],
+    "feed_align": false,
+    "feed_slack": false,
+    "smooth_fin_weight": 0.0,
+    "align_modular_init": false,
+    "scale_model": false,
+    "simple_feed": false,
+    "simple_feed_rate": null,
+    "normalized_feed": true,
+    "normalized_feed_scale": true,
+    "ipopt_max_iter": 2000,
+    "ipopt_tol": 1e-08,
+    "ipopt_acceptable_tol": 1e-06,
+    "ipopt_print_level": 3,
+    "normalized_feed_slack": false,
+    "normalized_feed_slack_weight": 1000000.0,
+    "normalized_feed_micro_slack": true,
+    "normalized_feed_micro_slack_budget": 0.05,
+    "normalized_feed_micro_slack_weight": 100000000.0,
+    "normalized_feed_micro_slack_usage": 0.05000000993551691,
+    "sync_fin_initial": true,
+    "elapsed_s": 10.111022233963013
+  },
+  "comparison": {
+    "ethanol_conc_delta": 6.252847506288502,
+    "ethanol_conc_rel": 62474.636167231365,
+    "hold_up_delta": 850.2403784192313,
+    "hold_up_rel": 5.677383623019532
+  }
+}

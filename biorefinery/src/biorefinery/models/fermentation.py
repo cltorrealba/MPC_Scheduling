@@ -215,12 +215,18 @@ def build_fermentation_model(
                 _cin_init[sp] = 0.0
         m.Cin = pe.Param(m.j, initialize=_cin_init, mutable=True, doc="Feed composition [g/kg]")
 
-    # Initial hold-up parameter for mass balance mode (simple default, can be overridden later)
-    if enable_mass_balance:
-        m.M0 = pe.Param(initialize=1000.0, mutable=True, doc="Initial reactor hold-up [kg]")
+    # Initial hold-up parameter (now always defined so Diff_mass uses a consistent value > lower bound)
+    m.M0 = pe.Param(initialize=1000.0, mutable=True, doc="Initial reactor hold-up [kg]")
 
     # Simplified species concentrations (initially zero; real init handled externally)
     # Tighter concentration upper bound to prevent runaway inflation during infeasible mass balance search
+    # Concentration and hold-up bounds strategy (A,D):
+    #  - Upper bound on concentrations tightened (default 200 g/kg) to prevent runaway scaling
+    #    during infeasibility diagnostics (previously 1000 allowed solver to inflate C arbitrarily
+    #    while collapsing M to reduce dynamic coupling).
+    #  - Lower bound on M (default 100 kg) prevents trivial collapse of mass that degenerated
+    #    balances (M*dC/dt ~ 0) and led to large mass_balance residuals hidden in slack.
+    # These defaults are user-configurable via build_fermentation_model(max_concentration=..., min_hold_up=...).
     m.C = pe.Var(m.t, m.j, initialize=0, within=pe.NonNegativeReals, bounds=(0, max_concentration))
     m.M = pe.Var(m.t, initialize=1000.0, within=pe.NonNegativeReals, bounds=(min_hold_up, m.Mmax))
 
@@ -310,15 +316,19 @@ def build_fermentation_model(
                 return m.M[t] * m.dCdt[t, sp] == m.final_time * ( m.Fin[t] * (m.Cin[sp] - m.C[t, sp]) )
             m.species_balance = pe.Constraint(m.t, m.j, rule=_species_balance_simple)
     else:
-        # Preserve original lightweight mass placeholder (Diff_mass) for backward compatibility
+        # Lightweight placeholder: keep a simple dynamic link but use consistent initial hold-up m.M0
         def _Diff_mass(m, t):
             if t == m.t.first() and m.current_starting_time == 0:
-                return m.M[t] == 1.0  # placeholder initial M0
+                return m.M[t] == m.M0
             elif t == m.t.first():
-                return pe.Constraint.Skip  # would link previous batch state
+                return pe.Constraint.Skip
             else:
                 return m.dMdt[t] == m.final_time * (m.F_C5liquid[t] + m.F_liquified_fibers[t])
         m.Diff_mass = pe.Constraint(m.t, rule=_Diff_mass)
+        # Reduce artificial mass growth pressure: start feeds at 0 (legacy large defaults caused huge derivatives)
+        for tau in m.t:
+            m.F_C5liquid[tau].set_value(0.0)
+            m.F_liquified_fibers[tau].set_value(0.0)
 
     # Phase-wise feed logic (reduced form)
     # Phase-wise feed logic (kept active irrespective of enable_mass_balance; later helper will override values)

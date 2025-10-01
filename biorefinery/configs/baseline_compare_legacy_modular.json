@@ -1,0 +1,16 @@
+{
+  "horizon_h": 12.0,
+  "nfe": 4,
+  "sched_periods": 4,
+  "flags": [
+    "--legacy-normalized-feed",
+    "--legacy-normalized-feed-scale",
+    "--legacy-initial-mass-slack",
+    "--legacy-relax-initial-comp",
+    "--legacy-regularize",
+    "--legacy-floor-C", "1e-4",
+    "--legacy-diagnostics",
+    "--legacy-diagnostics-top", "5"
+  ],
+  "notes": "Baseline configuration deemed numerically stable for KPI comparison despite Ipopt local infeasibility classification (residuals ~1e-6)."
+}

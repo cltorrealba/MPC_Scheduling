@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "horizon_h": 24.0,
+    "nfe": 2,
+    "sched_periods": 4
+  },
+  "modular": {
+    "final_ethanol_conc": 6.592407123940766,
+    "final_hold_up": 999.9991367466262,
+    "mapped_Cin": {
+      "G": 1.2422507537777428e-06,
+      "X": 6.211253768888714e-07,
+      "ACT": 1.0765127012899923e-07,
+      "HMF": 8.260747961707984e-09,
+      "F": 0.0
+    },
+    "prod_net": {
+      "G": 1.2422507537777428e-06,
+      "X": 6.211253768888714e-07,
+      "ACT": 1.0765127012899923e-07,
+      "HMF": 8.260747961707984e-09,
+      "F": -4.130373980853992e-08,
+      "Cell": 0.0
+    },
+    "scheduling_status": "optimal",
+    "fermentation_status": "optimal"
+  },
+  "legacy": {
+    "status": "not_optimal",
+    "solver_status": "ValueError",
+    "termination_condition": "exception",
+    "final_ethanol_conc": 0.0001,
+    "final_hold_up": 1000,
+    "objective": 1,
+    "solver_name": "ipopt",
+    "nfe": 2,
+    "regularized": true,
+    "floor_M": null,
+    "floor_C": 0.0001,
+    "warmstart": false,
+    "mass_slack": false,
+    "initial_mass_slack": true,
+    "cap_M": null,
+    "n_vars": 701,
+    "n_cons": 600,
+    "diagnostics": null,
+    "feed_align": false,
+    "feed_slack": false,
+    "smooth_fin_weight": 0.0,
+    "align_modular_init": false,
+    "scale_model": false,
+    "simple_feed": false,
+    "simple_feed_rate": null,
+    "normalized_feed": true,
+    "normalized_feed_scale": true,
+    "ipopt_max_iter": null,
+    "ipopt_tol": null,
+    "ipopt_acceptable_tol": null,
+    "ipopt_print_level": null,
+    "ipopt_linear_solver": null,
+    "ipopt_bound_relax_factor": null,
+    "ipopt_constr_viol_tol": null,
+    "normalized_feed_slack": false,
+    "normalized_feed_slack_weight": 1000000.0,
+    "normalized_feed_micro_slack": false,
+    "normalized_feed_micro_slack_budget": 0.01,
+    "normalized_feed_micro_slack_weight": 100000000.0,
+    "normalized_feed_micro_slack_usage": null,
+    "sync_fin_initial": false,
+    "jitter_conc": false,
+    "jitter_conc_mag": 1e-05,
+    "jitter_seed": null,
+    "relax_initial_comp": true,
+    "elapsed_s": 15.493370771408081
+  },
+  "comparison": {
+    "ethanol_conc_delta": 6.592307123940766,
+    "ethanol_conc_rel": 65923.07123940765,
+    "hold_up_delta": -0.0008632533738364145,
+    "hold_up_rel": -8.632533738364146e-07
+  }
+}

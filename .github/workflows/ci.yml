@@ -64,4 +64,22 @@ jobs:
           pip install -e .[dev]
       - name: Full test suite
         run: |
-          pytest --maxfail=1 --disable-warnings -q
+          pytest --maxfail=1 --disable-warnings --cov=biorefinery --cov-report=xml --cov-report=term-missing -q
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: coverage.xml
+      - name: Combine coverage (single job)
+        if: matrix.python-version == '3.10'
+        run: |
+          echo "(Placeholder) Combine coverage or publish badge source"
+      - name: Upload to Codecov
+        if: matrix.python-version == '3.10' && success()
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+          verbose: true

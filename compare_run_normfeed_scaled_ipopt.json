@@ -1,0 +1,109 @@
+{
+  "meta": {
+    "horizon_h": 12.0,
+    "nfe": 2,
+    "sched_periods": 4
+  },
+  "modular": {
+    "final_ethanol_conc": 6.026499210716917,
+    "final_hold_up": 999.9995686899687,
+    "mapped_Cin": {
+      "G": 1.2422507537777428e-06,
+      "X": 6.211253768888714e-07,
+      "ACT": 1.0765127012899923e-07,
+      "HMF": 8.260747961707984e-09,
+      "F": 0.0
+    },
+    "prod_net": {
+      "G": 1.2422507537777428e-06,
+      "X": 6.211253768888714e-07,
+      "ACT": 1.0765127012899923e-07,
+      "HMF": 8.260747961707984e-09,
+      "F": -4.130373980853992e-08,
+      "Cell": 0.0
+    },
+    "scheduling_status": "optimal",
+    "fermentation_status": "optimal"
+  },
+  "legacy": {
+    "status": "not_optimal",
+    "solver_status": "warning",
+    "termination_condition": "infeasible",
+    "final_ethanol_conc": 0.00020965595858024968,
+    "final_hold_up": 1191.2843654466012,
+    "objective": 1,
+    "solver_name": "ipopt",
+    "nfe": 2,
+    "regularized": true,
+    "floor_M": 100.0,
+    "floor_C": 0.0001,
+    "warmstart": false,
+    "mass_slack": false,
+    "initial_mass_slack": true,
+    "cap_M": 1200.0,
+    "n_vars": 701,
+    "n_cons": 600,
+    "diagnostics": [
+      {
+        "violation": 0.06165519759696797,
+        "constraint": "Feed_constraint_normalized[0.322474]"
+      },
+      {
+        "violation": 0.0006661833098804667,
+        "constraint": "R_definition[0.077526,LS]"
+      },
+      {
+        "violation": 9.999184542048374e-05,
+        "constraint": "Diff_comp[0,Cell]"
+      },
+      {
+        "violation": 9.999184522306099e-05,
+        "constraint": "Diff_comp[0,CO2]"
+      },
+      {
+        "violation": 9.999184521796346e-05,
+        "constraint": "Diff_comp[0,Eth]"
+      },
+      {
+        "violation": 9.999184517080813e-05,
+        "constraint": "Diff_comp[0,E]"
+      },
+      {
+        "violation": 9.999184497104124e-05,
+        "constraint": "Diff_comp[0,C]"
+      },
+      {
+        "violation": 9.999184495706096e-05,
+        "constraint": "Diff_comp[0,ACT]"
+      },
+      {
+        "violation": 9.999184495692039e-05,
+        "constraint": "Diff_comp[0,F]"
+      },
+      {
+        "violation": 9.999184495671247e-05,
+        "constraint": "Diff_comp[0,HMF]"
+      }
+    ],
+    "feed_align": false,
+    "feed_slack": false,
+    "smooth_fin_weight": 0.0,
+    "align_modular_init": false,
+    "scale_model": false,
+    "simple_feed": false,
+    "simple_feed_rate": null,
+    "normalized_feed": true,
+    "normalized_feed_scale": true,
+    "ipopt_max_iter": 6000,
+    "ipopt_tol": 1e-05,
+    "ipopt_acceptable_tol": 0.0001,
+    "ipopt_print_level": 3,
+    "elapsed_s": 2.606656789779663
+  },
+  "comparison": {
+    "ethanol_conc_delta": 6.026289554758336,
+    "ethanol_conc_rel": 28743.70752716605,
+    "hold_up_delta": -191.28479675663255,
+    "hold_up_rel": -0.16057022345367697
+  }
+}

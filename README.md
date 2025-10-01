@@ -1,5 +1,9 @@
 # Biorefinery Scheduling & MPC (Subset Cleanup)
 
+![CI](https://github.com/cltorrealba/MPC_Scheduling/actions/workflows/ci.yml/badge.svg)
+![Coverage](https://img.shields.io/badge/coverage-codecov_pending-lightgrey)
+_(La integración con Codecov está configurada en CI; el badge se actualizará tras el primer reporte exitoso.)_
+
 Este fork reorganiza y limpia el subconjunto de interés del repositorio original para enfocarse en los modelos de fermentación, scheduling y control (MPC) de una biorefinería.
 
 ## Objetivo
@@ -344,6 +348,172 @@ Se añadieron tests:
 - Otros: resume, drift, meta/no-rates, hash guard.
 
 Esto asegura que cualquier cambio futuro en el loop NMPC preserve reproducibilidad y formato estable.
+
+## Inicio Fase 4 (Homologación & Integración Scheduling-Control)
+
+Se inicia la Fase 4 con tres frentes fundacionales añadidos:
+
+1. Regresión Legacy Inicial: prueba `tests/test_legacy_regression_equivalence.py` compara parámetros cinéticos clave entre el script legacy y el builder modular (tolerancia relativa 1e-3).
+2. Interfaz Scheduling-Control (Scaffolding): módulo `biorefinery.integration.scheduling_control_interface` con dataclasses `FermentationStateSnapshot` y `SchedulingDemandProjection`, más helpers placeholder.
+3. Pipeline CI Inicial: workflow `.github/workflows/ci.yml` ejecuta pytest en matriz 3.9–3.11 y emite resumen de cobertura.
+
+Próximos pasos inmediatos:
+- Extender equivalencia a trayectorias dinámicas y baseline combinado.
+- Traducir snapshot -> demanda multi-período realista y mapear schedule -> feeds NMPC.
+- Métrica económica agregada (productividad + cumplimiento demanda) + prueba.
+- Badge de CI y cobertura en encabezado README.
+
+Esto formaliza el arranque de la Fase 4 (homologación estructurada).
+
+## Flujo Integrado (Scheduling -> Fermentación -> Métrica Económica)
+
+Script demostrativo: `python -m biorefinery.scripts.run_integrated --print`
+
+Pasos internos:
+1. Resuelve un scheduling mínimo (batch único) y calcula cumplimiento de demanda.
+2. Inyecta la producción como incremento en `Cin` (feed) del modelo de fermentación mediante `apply_schedule_to_feeds`.
+3. (Opcional) Resuelve fermentación (desactivado con `--no-solve-fermentation`).
+4. Calcula métrica económica agregada (rendimiento EtOH + cumplimiento demanda) usando `compute_economic_aggregate`.
+
+Ejemplo rápido (sin resolver fermentación para velocidad):
+```powershell
+python -m biorefinery.scripts.run_integrated --no-solve-fermentation --print
+```
+Salida esperada (valores aproximados):
+```
+Integrated run result:
+  Produced ethanol mass (proxy): <g>
+  Demand fulfilled: 5.0
+  Aggregate score: 0.xx
+```
+
+Pruebas asociadas:
+- `test_run_integrated.py`: valida score dentro de [0,1].
+- `test_schedule_to_feeds.py`: mapea producción ponderada (`rho_prod`).
+
+Próximas extensiones:
+- Iteración multi-etapa: scheduling -> fermentación -> re-scheduling.
+- Sustitución de heurística feed por derivación de flujo dinámico.
+- Métricas económicas extendidas (costos operativos, energía) y ponderaciones externas.
+
+### Loop Iterativo (Prototipo)
+Script: `python -m biorefinery.scripts.run_integrated_iterative --print`
+
+Realiza N iteraciones heurísticas ajustando inventario y demanda. Cada iteración:
+1. Scheduling con inventario actualizado.
+2. Mapping producción -> `Cin` + posible ajuste de flujos (helper disponible: `adjust_feed_flows_in_fermentation`).
+3. Fermentación breve (opcional solve) y snapshot.
+4. Cálculo incremental de métrica económica.
+
+### Métrica Económica Extendida
+Módulo: `biorefinery.metrics.economic_extended`
+Combina: score_base (yield + demanda) + penalización de costo y energía:
+`score_ext = wb*base + wc*(1 - costo_norm) + we*(1 - energia_norm)`
+
+Test asociados:
+- `test_run_integrated_iterative.py`
+- `test_economic_extended.py`
+- `test_adjust_feed_flows.py`
+
+### Comparación Legacy vs Nuevo (Series)
+Pruebas para homología dinámica:
+- `test_legacy_dynamic_equivalence.py`: compara concentraciones finales clave.
+- `test_legacy_series_equivalence.py`: compara trayectorias `G`, `X`, `Eth` (tolerancias iniciales amplias).  
+Variables de entorno para generar baseline:
+```
+$env:BIOREF_REFRESH_LEGACY_DYN_BASELINE=1
+$env:BIOREF_REFRESH_LEGACY_SERIES_BASELINE=1
+```
+Luego re‑ejecutar `pytest` para validar contra los nuevos archivos generados.
+
+### Baseline Unificado & Modos de Tolerancia (Nuevo)
+Se consolidaron las baselines de equivalencia legacy en un único archivo JSON:
+
+`tests/legacy_unified_baseline.json`
+
+Secciones actuales:
+- `dynamic_finals`: concentraciones finales (`G`, `X`, `Eth`, `Cell`).
+- `series_concentrations`: series discretizadas de `G`, `X`, `Eth`.
+- `series_rates` (opcional / inicial): series de tasas `q[...]` y `R[...]` detectadas heurísticamente.
+ - `param_hash` (global): hash truncado (16 hex) de parámetros cinéticos/estequiométricos relevantes; si cambia y no se refresca baseline, las pruebas hacen skip preventivo.
+
+Variables de entorno clave:
+- `BIOREF_REFRESH_BASELINES=1`: Regenera (o crea) TODAS las secciones presentes en la corrida y hace `skip` de las pruebas tras escribir el archivo.
+- `BIOREF_BASELINE_FILE=otra_ruta.json`: Cambia la ruta destino (útil para experimentar sin sobrescribir baseline principal).
+- `BIOREF_TOLERANCE_MODE=strict|lenient`: Cambia el conjunto de tolerancias cargadas. Default: `lenient`.
+
+Mapping de tolerancias (valor inicial; se podrá endurecer conforme mejore la paridad cinética):
+- Dinámico (finales): lenient = abs 5e-2 / rel 5e-2; strict = abs 2e-2 / rel 2e-2.
+- Series (concentraciones): lenient = abs 1e-1 / rel 8e-2; strict = abs 5e-2 / rel 5e-2.
+- Series (tasas): lenient = abs 2e-1 / rel 1.0 (placeholder amplio); strict = abs 8e-2 / rel 6e-2.
+
+Flujo típico:
+```powershell
+$env:BIOREF_REFRESH_BASELINES=1; pytest -k legacy_dynamic_equivalence -q  # genera secciones disponibles
+$env:BIOREF_REFRESH_BASELINES=1; pytest -k legacy_series_equivalence -q   # añade/consolida series
+$env:BIOREF_REFRESH_BASELINES=1; pytest -k legacy_rates_equivalence -q    # añade tasas (si se detectan)
+Remove-Item Env:BIOREF_REFRESH_BASELINES
+pytest -k legacy_equivalence -q  # Ejecuta sin regenerar
+```
+
+Script alternativo (batch) para generar baseline unificada sin ejecutar múltiples tests:
+```powershell
+python -m biorefinery.scripts.generate_unified_baseline --nfe 4 --nfe-dynamic 3 --refresh
+```
+Reescribe `tests/legacy_unified_baseline.json` con finales, series y tasas (solo modelo nuevo) y registra `param_hash`.
+
+#### Nuevas Banderas de Generación Determinista (Feasible Seed & Fallback)
+Para eliminar ruido de infeasibilidad (especialmente en CI o durante refactors) se añadieron banderas:
+
+| Flag | Efecto | Uso Típico |
+|------|--------|-----------|
+| `--feasible-seed` | No invoca solver. Fija todas las concentraciones constantes (valor inicial) y pone `q=R=0`. `status=feasible_seed`. | Baseline puramente estructural para regression estable. |
+| `--no-solver` | Alias de `--feasible-seed`. | Sintaxis alternativa corta. |
+| `--fallback-if-infeasible` | Intenta solve normal; si cualquier modelo termina en estado infeasible reemplaza sus valores por el patrón semilla (constante) y marca `status=feasible_seed_fallback` y `solver=ipopt+fallback`. | Mantener valores “reales” cuando factible, degradando limpiamente si no. |
+
+Ejemplos:
+```powershell
+# 1) Baseline determinista sin solver
+python -m biorefinery.scripts.generate_unified_baseline --feasible-seed --refresh
+
+# 2) Alias equivalente
+python -m biorefinery.scripts.generate_unified_baseline --no-solver --refresh
+
+# 3) Intentar solve y caer a semilla si es infeasible
+python -m biorefinery.scripts.generate_unified_baseline --fallback-if-infeasible --refresh
+```
+
+Interpretación de `status` en secciones del JSON:
+- `feasible_seed`: nunca se llamó al solver; datos triviales para paridad estructural.
+- `feasible_seed_fallback`: se intentó solver pero la corrida resultó infeasible y se sustituyó por semilla.
+- (otros valores: cadena de terminación del solver, p.ej. `optimal`, `locallyOptimal`, `infeasible`).
+
+Razonamiento: separar la detección de divergencias de formulación (hash + estructura + dimensiones) de la validez numérica temporal del modelo mientras se completa la migración cinética. Una vez estabilizado, se puede migrar la baseline a resultados realmente optimizados quitando `--feasible-seed` y endureciendo tolerancias.
+
+Validación adicional:
+- Prueba (opcional, inicialmente skip) `test_derivative_consistency.py`: compara derivada finita de `C` vs aproximación simple a partir de `q`/`R` para detectar divergencias gruesas de formulación antes de endurecer tolerancias. Se habilitará cuando la migración cinética esté completa.
+
+Pruebas relevantes:
+- `test_legacy_dynamic_equivalence.py` (usa sección `dynamic_finals`).
+- `test_legacy_series_equivalence.py` (usa `series_concentrations`).
+- `test_legacy_rates_equivalence.py` (usa `series_rates`).
+
+### Paridad Cinética Próxima (Roadmap Breve)
+Objetivo: Reducir gradualmente tolerancias hasta niveles estrictos uniformes.
+Pasos planeados:
+1. Migrar expresiones completas de inhibición cruzada F/HMF sobre rutas de formación Eth/ACT.
+2. Unificar dependencia de pH residual (si falta) en términos faltantes de `q_X` y reacciones secundarias.
+3. Exponer explícitamente variables legacy de tasa (si difieren en nombre) para mapear 1:1 en lugar de heurística por prefijo.
+4. Implementar test de derivada numérica (consistencia: balances vs q/R) para detectar divergencias estructurales sutiles.
+5. Endurecer tolerancias: mover `series` a abs 2e-2 / rel 3e-2 tras pasos 1–3 completados y estabilidad confirmada (>3 corridas CI).
+
+Indicadores de finalización:
+- Ninguna especie excede tolerancia estricta en 3 ejecuciones CI consecutivas.
+- Tasa de skip por solver diferente < 5% (preferencia estable por Ipopt).
+- Hash estructural de parámetros invariable durante 1 semana de cambios de refactor relacionados.
+
+
+
 
 
 ### Enforzamiento Exacto de Cero en Rutas Desactivadas

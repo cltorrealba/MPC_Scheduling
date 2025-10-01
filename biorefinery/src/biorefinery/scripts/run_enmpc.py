@@ -14,7 +14,7 @@ import json, argparse, random, math, os
 import pyomo.environ as pe
 from biorefinery.models.fermentation import build_fermentation_model
 from biorefinery.feeds.profile import apply_feed_profile, DEFAULT_PHASES
-from biorefinery.metrics import compute_economic_metric
+from biorefinery.legacy.param_hash import compute_param_hash
 from biorefinery.optimization.solvers import pick_available_solver
 import hashlib
 import subprocess
@@ -483,7 +483,11 @@ def run_enmpc(args):
         except Exception:
             max_con_violation = None
             detailed_violations = []
-        econ_metric = compute_economic_metric(m)
+        # Simple surrogate economic metric: final ethanol mass (concentration * hold-up)
+        try:
+            econ_metric = float(pe.value(m.C[m.t.last(),'Eth']) * pe.value(m.M[m.t.last()]))
+        except Exception:
+            econ_metric = 0.0
         # Compute Fin average & delta M for diagnostics
         avg_Fin = None
         delta_M = None

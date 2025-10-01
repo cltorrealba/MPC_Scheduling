@@ -459,8 +459,9 @@ def build_fermentation_one_time_step_optimizing_flows_pH_open_loop_pessimization
     #---- main variables -------------------------------------------------------------
     def _C_init(m,t,j):
         return pe.value(m.C0[j])
-    m.C=pe.Var(m.t, m.j, initialize=_C_init,within=pe.NonNegativeReals,bounds=(0,1000), doc='Concentrations, units of g/kg') #bounds=(0, 10000))
-    m.M=pe.Var(m.t,initialize=1,within=pe.NonNegativeReals,bounds=(0,m.Mmax), doc='Fermenter hold-up in kg') #MAXIMUM HOLD UP IN m^3 is 250   The fermentation tank is filled up to 220 t with a constant feed rate calculated as the sum between the enzymatic hydrolysis outflow rate and the C5 liquid from the pretreatment process
+    # Stabilization patch: tighten concentration upper bound (200) and enforce minimum hold-up (100)
+    m.C=pe.Var(m.t, m.j, initialize=_C_init,within=pe.NonNegativeReals,bounds=(0,200), doc='Concentrations, units of g/kg (capped for numerical stability)')
+    m.M=pe.Var(m.t,initialize=1000,within=pe.NonNegativeReals,bounds=(100,m.Mmax), doc='Fermenter hold-up in kg (bounded away from zero for stability)')
     m.R = pe.Var(m.t, m.j, initialize=1, within=pe.Reals,bounds=(-1,1), doc='units of g/ (kg s)')
 
     # ---------Reaction kinetic expresions for fermentation part -------------------------
@@ -1219,8 +1220,9 @@ def build_fermentation_one_time_step_optimizing_flows_pH_open_loop_optimization(
     #---- main variables -------------------------------------------------------------
     def _C_init(m,t,j):
         return pe.value(m.C0[j])
-    m.C=pe.Var(m.t, m.j, initialize=_C_init,within=pe.NonNegativeReals,bounds=(0,1000), doc='Concentrations, units of g/kg') #bounds=(0, 10000))
-    m.M=pe.Var(m.t,initialize=1,within=pe.NonNegativeReals,bounds=(0,m.Mmax), doc='Fermenter hold-up in kg') #MAXIMUM HOLD UP IN m^3 is 250   The fermentation tank is filled up to 220 t with a constant feed rate calculated as the sum between the enzymatic hydrolysis outflow rate and the C5 liquid from the pretreatment process
+    # (Stabilization bounds applied) concentrations capped at 200, hold-up min 100
+    m.C=pe.Var(m.t, m.j, initialize=_C_init,within=pe.NonNegativeReals,bounds=(0,200), doc='Concentrations, units of g/kg (stabilized)')
+    m.M=pe.Var(m.t,initialize=1000,within=pe.NonNegativeReals,bounds=(100,m.Mmax), doc='Fermenter hold-up in kg (stabilized)')
     m.R = pe.Var(m.t, m.j, initialize=1, within=pe.Reals,bounds=(-1,1), doc='units of g/ (kg s)')
 
     # ---------Reaction kinetic expresions for fermentation part -------------------------
@@ -1982,8 +1984,9 @@ def build_fermentation_one_time_step_new(total_sim_time: float=190*60*60,
     #---- main variables -------------------------------------------------------------
     def _C_init(m,t,j):
         return m.C0[j]
-    m.C=pe.Var(m.t, m.j, initialize=_C_init,within=pe.NonNegativeReals,bounds=(0,1000), doc='Concentrations, units of g/kg') #bounds=(0, 10000))
-    m.M=pe.Var(m.t,initialize=1,within=pe.NonNegativeReals,bounds=(0,m.Mmax), doc='Fermenter hold-up in kg') #MAXIMUM HOLD UP IN m^3 is 250   The fermentation tank is filled up to 220 t with a constant feed rate calculated as the sum between the enzymatic hydrolysis outflow rate and the C5 liquid from the pretreatment process
+    # (Stabilization bounds applied) concentrations capped at 200, hold-up min 100
+    m.C=pe.Var(m.t, m.j, initialize=_C_init,within=pe.NonNegativeReals,bounds=(0,200), doc='Concentrations, units of g/kg (stabilized)')
+    m.M=pe.Var(m.t,initialize=1000,within=pe.NonNegativeReals,bounds=(100,m.Mmax), doc='Fermenter hold-up in kg (stabilized)')
     m.R = pe.Var(m.t, m.j, initialize=1, within=pe.Reals,bounds=(-100,100), doc='units of g/ (kg s)')
 
     # ---------Reaction kinetic expresions for fermentation part -------------------------
