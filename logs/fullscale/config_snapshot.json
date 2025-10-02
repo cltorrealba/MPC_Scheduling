@@ -1,5 +1,5 @@
 {
-  "hash": "31bfafec67d9",
+  "hash": "838c77bbc101",
   "config": {
     "args": {
       "log_dir": "logs/fullscale",
@@ -14,7 +14,12 @@
       "auto": false,
       "feedback": "all_species",
       "baseline_tol_pct": 5.0,
-      "regen_baseline": false
+      "regen_baseline": false,
+      "adaptive_nfe": true,
+      "adaptive_nfe_rel_tol": 0.02,
+      "adaptive_nfe_min_tol": 0.002,
+      "baseline_compare_extended": true,
+      "strict_exit": true
     },
     "nfe_default_map": {
       "12": 4,

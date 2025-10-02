@@ -1,42 +1,76 @@
 {
-  "created": 1759366444.9181232,
+  "created": 1759367979.9750419,
   "tolerance_pct": 5.0,
+  "param_hash": "6202f75ae7e0",
   "results": [
     {
       "horizon_h": 12.0,
-      "nfe": 4,
-      "elapsed_s": 2.0640883445739746,
-      "ethanol_final": 6.696637575755619,
-      "hold_up_final": 999.9991390556822,
+      "nfe": 2,
+      "elapsed_s": 2.1319949626922607,
+      "ethanol_final": 6.679238067965667,
+      "hold_up_final": 999.9991386399734,
       "csv_path": "logs\\fullscale\\h12\\rolling_performance_log.csv",
       "status": "ok",
-      "drift_l2_mean": 7.640086819077891,
-      "economic_mean": 0.9844927051751569,
-      "stability_ok": true
+      "drift_l2_mean": 7.420202423541755,
+      "economic_mean": 0.8726355408397335,
+      "stability_ok": true,
+      "adapt_mode": "coarse",
+      "adapt_speedup_ratio": 1.0063401375606882,
+      "adapt_metrics": {
+        "rel_eth": 0.0025982454019828284,
+        "rel_hold_up": 4.157092403310976e-10,
+        "rel_drift": 0.002797393545161376,
+        "rel_econ": 0.01577020870563904,
+        "worst": 0.01577020870563904
+      },
+      "adapt_tol_effective": 0.02,
+      "adapt_reason": "coarse_within_tol"
     },
     {
       "horizon_h": 24.0,
-      "nfe": 6,
-      "elapsed_s": 3.8174049854278564,
-      "ethanol_final": 6.700011406611458,
-      "hold_up_final": 999.9982780802367,
+      "nfe": 3,
+      "elapsed_s": 2.511573314666748,
+      "ethanol_final": 6.699996791603655,
+      "hold_up_final": 999.9982761441269,
       "csv_path": "logs\\fullscale\\h24\\rolling_performance_log.csv",
       "status": "ok",
-      "drift_l2_mean": 7.8492785196084816,
-      "economic_mean": 1.2088716437140767,
-      "stability_ok": true
+      "drift_l2_mean": 7.828145543181364,
+      "economic_mean": 1.1526598739386216,
+      "stability_ok": true,
+      "adapt_mode": "coarse",
+      "adapt_speedup_ratio": 1.3042138909630652,
+      "adapt_metrics": {
+        "rel_eth": 2.1813407345344616e-06,
+        "rel_hold_up": 1.9361131449718292e-09,
+        "rel_drift": 0.00025852035092458755,
+        "rel_econ": 0.006058941373178583,
+        "worst": 0.006058941373178583
+      },
+      "adapt_tol_effective": 0.01,
+      "adapt_reason": "coarse_within_tol"
     },
     {
       "horizon_h": 48.0,
-      "nfe": 8,
-      "elapsed_s": 4.85692572593689,
+      "nfe": 4,
+      "elapsed_s": 4.730654954910278,
       "ethanol_final": 6.700023108997322,
       "hold_up_final": 999.9965509071897,
       "csv_path": "logs\\fullscale\\h48\\rolling_performance_log.csv",
       "status": "ok",
-      "drift_l2_mean": 7.839374505496285,
-      "economic_mean": 1.222734287268128,
-      "stability_ok": true
+      "drift_l2_mean": 7.9049438920238675,
+      "economic_mean": 1.2227342890659032,
+      "stability_ok": true,
+      "adapt_mode": "coarse",
+      "adapt_speedup_ratio": 0.7930985109469627,
+      "adapt_metrics": {
+        "rel_eth": 0.0,
+        "rel_hold_up": 0.0,
+        "rel_drift": 0.0007770268310475736,
+        "rel_econ": 1.378399433013689e-10,
+        "worst": 0.0007770268310475736
+      },
+      "adapt_tol_effective": 0.005,
+      "adapt_reason": "coarse_within_tol"
     }
   ]
 }

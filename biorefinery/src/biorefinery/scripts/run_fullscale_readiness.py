@@ -17,6 +17,11 @@ class HorizonResult:
     drift_l2_mean: float | None
     economic_mean: float | None
     stability_ok: bool
+    adapt_mode: str | None = None  # 'fine','coarse','fixed'
+    adapt_speedup_ratio: float | None = None  # fine_elapsed / chosen_elapsed
+    adapt_metrics: dict | None = None  # relative differences
+    adapt_tol_effective: float | None = None
+    adapt_reason: str | None = None
 
 BASELINE_FILE = 'logs/fullscale_baseline.json'
 
@@ -102,10 +107,11 @@ def run_single_horizon(h, nfe, args) -> HorizonResult:
                 stability_ok = False
     return HorizonResult(horizon_h=h, nfe=nfe, elapsed_s=elapsed, ethanol_final=ethanol_final,
                          hold_up_final=hold_up_final, csv_path=str(csv_path), status=status,
-                         drift_l2_mean=drift_l2_mean, economic_mean=econ_mean, stability_ok=stability_ok)
+                         drift_l2_mean=drift_l2_mean, economic_mean=econ_mean, stability_ok=stability_ok,
+                         adapt_mode=None)
 
 
-def compare_with_baseline(results: list[HorizonResult], tol: float, regen: bool, path: pathlib.Path, param_hash: str):
+def compare_with_baseline(results: list[HorizonResult], tol: float, regen: bool, path: pathlib.Path, param_hash: str, extended: bool):
     """Create or compare against stored baseline.
 
     Adds param_hash tracking: if the stored baseline param_hash differs from current
@@ -127,11 +133,14 @@ def compare_with_baseline(results: list[HorizonResult], tol: float, regen: bool,
         return {'mode':'param_hash_mismatch','ok':False,'stored_param_hash':stored_hash,'current_param_hash':param_hash}
     issues = []
     ref_map = {int(r['horizon_h']): r for r in stored.get('results', [])}
+    comp_metrics = ['ethanol_final','hold_up_final']
+    if extended:
+        comp_metrics += ['drift_l2_mean','economic_mean']
     for r in results:
         ref = ref_map.get(int(r.horizon_h))
         if not ref:
             continue
-        for metric in ['ethanol_final','hold_up_final']:
+        for metric in comp_metrics:
             cur = getattr(r, metric)
             refv = ref.get(metric)
             if cur is None or refv in (None,'nan'): continue
@@ -157,6 +166,11 @@ def build_parser():
     p.add_argument('--feedback', choices=['none','ethanol','all_species'], default='all_species')
     p.add_argument('--baseline-tol-pct', type=float, default=5.0)
     p.add_argument('--regen-baseline', action='store_true')
+    p.add_argument('--adaptive-nfe', action='store_true', help='Activar selección adaptativa nfe vs nfe/2 comparando etanol & hold-up finales.')
+    p.add_argument('--adaptive-nfe-rel-tol', type=float, default=0.01, help='Tolerancia relativa máxima para aceptar malla gruesa (por defecto 1%).')
+    p.add_argument('--adaptive-nfe-min-tol', type=float, default=0.002, help='Tolerancia mínima efectiva tras escalar por horizonte.')
+    p.add_argument('--baseline-compare-extended', action='store_true', help='Incluir drift_l2_mean y economic_mean en comparación baseline.')
+    p.add_argument('--strict-exit', action='store_true', help='Salir con código !=0 si baseline no ok, mismatch hash o instabilidades.')
     return p
 
 
@@ -192,16 +206,70 @@ def main():
     horizons = [float(h.strip()) for h in args.horizons.split(',') if h.strip()]
     results = []
     for h in horizons:
-        nfe = nfe_map.get(int(h), math.ceil(h/3))
-        res = run_single_horizon(h, nfe, args)
-        # Fallback if fail: try nfe-1 once
-        if res.status != 'ok' and nfe > 2:
-            res = run_single_horizon(h, nfe-1, args)
-        results.append(res)
+        base_nfe = nfe_map.get(int(h), math.ceil(h/3))
+        if not args.adaptive_nfe or base_nfe <= 2:
+            res = run_single_horizon(h, base_nfe, args)
+            # Fallback
+            if res.status != 'ok' and base_nfe > 2:
+                res = run_single_horizon(h, base_nfe-1, args)
+            if res.adapt_mode is None:
+                res.adapt_mode = 'fixed'
+            results.append(res)
+            continue
+        # Adaptive path: try coarse first
+        coarse_nfe = max(1, base_nfe // 2)
+        coarse_res = run_single_horizon(h, coarse_nfe, args)
+        # If coarse failed, escalate directly to fine
+        if coarse_res.status != 'ok':
+            fine_res = run_single_horizon(h, base_nfe, args)
+            if fine_res.status != 'ok' and base_nfe > 2:
+                fine_res = run_single_horizon(h, base_nfe-1, args)
+            fine_res.adapt_mode = 'fine_failover'
+            results.append(fine_res)
+            continue
+        # Run fine for comparison
+        fine_res = run_single_horizon(h, base_nfe, args)
+        if fine_res.status != 'ok':
+            # Accept coarse but label uncertain
+            coarse_res.adapt_mode = 'coarse_accept_fine_fail'
+            results.append(coarse_res)
+            continue
+        # Compare relative differences in ethanol_final & hold_up_final
+        def _reldiff(a,b):
+            if a is None or b is None or b == 0:
+                return float('inf')
+            return abs(a-b)/abs(b)
+        rel_eth = _reldiff(coarse_res.ethanol_final, fine_res.ethanol_final)
+        rel_m = _reldiff(coarse_res.hold_up_final, fine_res.hold_up_final)
+        rel_drift = _reldiff(coarse_res.drift_l2_mean, fine_res.drift_l2_mean)
+        rel_econ = _reldiff(coarse_res.economic_mean, fine_res.economic_mean)
+        # Dynamic tolerance scaling: tighter for longer horizons
+        horizon_scale = max(1.0, h/12.0)
+        eff_tol = max(args.adaptive_nfe_min_tol, args.adaptive_nfe_rel_tol / horizon_scale)
+        worst = max(rel_eth, rel_m, rel_drift, rel_econ)
+        # Speedup ratio (fine/coarse elapsed) if both valid
+        speedup = None
+        if coarse_res.elapsed_s and fine_res.elapsed_s and coarse_res.elapsed_s > 0:
+            speedup = fine_res.elapsed_s / coarse_res.elapsed_s
+        metrics = {'rel_eth': rel_eth, 'rel_hold_up': rel_m, 'rel_drift': rel_drift, 'rel_econ': rel_econ, 'worst': worst}
+        if worst <= eff_tol:
+            coarse_res.adapt_mode = 'coarse'
+            coarse_res.adapt_speedup_ratio = speedup
+            coarse_res.adapt_metrics = metrics
+            coarse_res.adapt_tol_effective = eff_tol
+            coarse_res.adapt_reason = 'coarse_within_tol'
+            results.append(coarse_res)
+        else:
+            fine_res.adapt_mode = 'fine'
+            fine_res.adapt_speedup_ratio = speedup
+            fine_res.adapt_metrics = metrics
+            fine_res.adapt_tol_effective = eff_tol
+            fine_res.adapt_reason = 'coarse_exceeds_tol'
+            results.append(fine_res)
 
     baseline_path = pathlib.Path(args.log_dir)/'fullscale_baseline.json'
     current_phash = _parameter_hash()
-    baseline_status = compare_with_baseline(results, args.baseline_tol_pct, args.regen_baseline, baseline_path, current_phash)
+    baseline_status = compare_with_baseline(results, args.baseline_tol_pct, args.regen_baseline, baseline_path, current_phash, args.baseline_compare_extended)
 
     summary = {
         'config_hash': cfg_hash,
@@ -215,10 +283,20 @@ def main():
     (log_dir/'summary.json').write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
     # Simple advisory
-    if baseline_status.get('ok') and all(r.stability_ok for r in results):
+    exit_code = 0
+    if baseline_status.get('mode') == 'param_hash_mismatch':
+        print('READINESS: PARAM HASH MISMATCH (regenerar baseline).')
+        exit_code = 2
+    elif baseline_status.get('ok') and all(r.stability_ok for r in results):
         print('READINESS: PASS (baseline within tolerance & stability ok)')
     else:
         print('READINESS: ATTENTION (see summary issues)')
+        if not baseline_status.get('ok'):
+            exit_code = 1
+        if not all(r.stability_ok for r in results):
+            exit_code = max(exit_code, 3)
+    if args.strict_exit and exit_code != 0:
+        return exit_code
     return 0
 
 

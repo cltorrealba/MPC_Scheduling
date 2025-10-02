@@ -1,10 +1,10 @@
 {
   "meta": {
-    "git_commit": "958ae2e",
+    "git_commit": "377735d",
     "git_dirty": true,
     "python_version": "3.10.18",
     "platform": "Windows-10-10.0.19045-SP0",
-    "timestamp_utc": "2025-10-02T00:59:58Z",
+    "timestamp_utc": "2025-10-02T01:20:33Z",
     "mode": "empc_rolling"
   },
   "step_row": {
@@ -14,7 +14,7 @@
     "prediction_h": 6.0,
     "apply_h": 3.0,
     "nfe": 1,
-    "mod_elapsed_s": 0.14818167686462402,
+    "mod_elapsed_s": 0.13620996475219727,
     "predicted_end_h": 33.0,
     "propagation_mode": "final",
     "schedule_horizon_h": 6.0,
@@ -26,7 +26,7 @@
     "productivity_pred": 1.116669007763471,
     "economic_metric": 1.4333368624475125,
     "economic_metric2": 1.4333368624475125,
-    "git_commit": "958ae2e",
+    "git_commit": "377735d",
     "git_dirty": true,
     "python_version": "3.10.18",
     "feasible_flag": 1,
