@@ -1,10 +1,10 @@
-# Biorefinery Scheduling & MPC (Subset Cleanup)
+# Biorefinery Scheduling & MPC
 
 ![CI](https://github.com/cltorrealba/MPC_Scheduling/actions/workflows/ci.yml/badge.svg)
 ![Coverage](https://img.shields.io/badge/coverage-codecov_pending-lightgrey)
 _(La integración con Codecov está configurada en CI; el badge se actualizará tras el primer reporte exitoso.)_
 
-Este fork reorganiza y limpia el subconjunto de interés del repositorio original para enfocarse en los modelos de fermentación, scheduling y control (MPC) de una biorefinería.
+Plataforma modular para modelos de fermentación (DAE), scheduling y lazos MPC/ENMPC con validación reproducible y pipeline de readiness.
 
 ## Objetivo
 Proveer una base clara y reproducible para:
@@ -12,25 +12,20 @@ Proveer una base clara y reproducible para:
 - Ejecutar un caso de scheduling + dinámica + control MPC
 - Extender con escenarios y análisis posteriores
 
-## Estructura Actual (fase 1 de refactor)
+## Documentos Clave
+| Propósito | Archivo |
+|-----------|---------|
+| Guía práctica (flujo end-to-end) | `biorefinery/docs/USAGE_GUIDE.md` |
+| Referencia de funciones/APIs | `biorefinery/docs/FUNCTION_REFERENCE.md` |
+| Arquitectura modular | `biorefinery/docs/ARCHITECTURE.md` |
+
+## Estructura Simplificada
 ```
 biorefinery/
-  src/biorefinery/
-    models/            # (Futuro) Modelos modulares fermentación, hidrólisis, scheduling
-    optimization/      # (Futuro) Métodos de solución, inicialización, estrategias GDP
-    plotting/          # (Futuro) Funciones de graficación
-  data/
-    raw/               # CSV originales (copiados desde biorefinery_models)
-  experiments/
-    scenarios/         # Archivos JSON de condiciones iniciales + index.csv generado
-  scripts/
-    run_mpc.py         # Wrapper que ejecuta el script legado
-  results/
-    figures/           # Resultados gráficos
-  docs/
-requirements.txt       # Dependencias mínimas
-biorefinery_models/    # Código original (legacy fuente de verdad temporal)
-functions/             # Utilidades originales (se irá seleccionando lo necesario)
+  src/biorefinery/  (models, optimization, metrics, reporting, integration, scripts)
+  docs/             (uso, arquitectura, referencia)
+  results/          (benchmarks, snapshots)
+legacy/             (artefactos históricos / JSON archivados)
 ```
 
 ## Instalación
@@ -47,118 +42,49 @@ Si solo se desea el entorno mínimo sin extras de desarrollo:
 pip install -e .
 ```
 
-## Ejecución Rápida (Temporal)
-Mientras se completa la migración, el script original se ejecuta directamente:
-```powershell
-python biorefinery_models/Fermentation_Scheduling_and_MPC.py
-```
-Nota: Puede requerir solvers externos (ej. `ipopt`). Si no hay solver MINLP disponible se activa la cadena de fallback (intento GAMS->solver, luego solver directo, luego ipopt si continuo). 
+## Flujo Rápido
+1. Baseline determinista:
+  ```powershell
+  python -m biorefinery.scripts.generate_unified_baseline --output unified.json --feasible-seed --refresh
+  ```
+2. Readiness multi-horizonte:
+  ```powershell
+  python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 12,24 --adaptive-nfe --strict-exit --regen-baseline
+  ```
+3. Pipeline completo:
+  ```powershell
+  python biorefinery/src/biorefinery/scripts/run_fullscale_pipeline.py --short-horizons 12,24 --medium-horizons 48 --full-horizons 72 --adaptive-nfe --strict
+  ```
+4. ENMPC loop:
+  ```powershell
+  python biorefinery/src/biorefinery/scripts/run_enmpc.py --total-time-h 12 --step-time-h 6 --horizon-time-h 12 --nfe 2 --max-iterations 2 --feas-prepass --output enmpc_run.json
+  ```
+5. Benchmark:
+  ```powershell
+  python -m biorefinery.scripts.benchmark_baseline --repeat 3 --output biorefinery/results/benchmark.json
+  ```
+Más variantes y flags: ver `USAGE_GUIDE.md`.
 
-### Fallback Multi-Solver
-El proyecto incorpora ahora utilidades para seleccionar el primer solver disponible en un orden preferido. Orden por defecto:
+## Componentes Principales
+- Builder fermentación (cinética incremental, dilución, rutas discretas).
+- Adaptadores DSDA + solver fallback.
+- Readiness (baseline, adaptación NFE, estabilidad, fallback tiers, config freeze).
+- Pipeline de gates para escalado de horizontes.
+- ENMPC y rolling EMPC.
+- Métricas económicas agregadas y extendidas.
+- Config y logging centralizados.
+Más detalle: `ARCHITECTURE.md` y diccionario: `FUNCTION_REFERENCE.md`.
 
-1. Ipopt (NLP continuo, open source)
-2. GAMS + CONOPT (si se dispone de licencia)
-3. BONMIN (MINLP híbrido; requiere Ipopt internamente)
-4. SCIP (MINLP)
+## Readiness (Resumen)
+`run_fullscale_readiness.py` evalúa baseline, adaptación NFE (coarse vs fine), estabilidad y aplica fallback escalonado.
 
-El helper `pick_available_solver()` en `biorefinery.optimization.solvers` recorre esta lista y retorna el primero utilizable. La prueba de baseline registra el solver usado en el JSON para reproducibilidad; si se ejecuta con otro solver distinto se hace skip en lugar de fallar, permitiendo regenerar la baseline de forma explícita.
+Flags clave: `--adaptive-nfe`, `--adaptive-error-weights`, `--adaptive-min-speedup`, `--stability-*`, `--config-freeze`, `--advanced-fallback`.
 
-Ejemplo:
-```python
-from biorefinery.optimization.solvers import pick_available_solver
-name, opts = pick_available_solver(return_options=True)
-print('Usando solver:', name, 'opciones:', opts)
-```
+Fallback tiers: base → nfe-1 → horizonte reducido (exit code 4 si sólo tier2 bajo estricto).
 
-Para forzar GAMS + CONOPT establece variables de entorno de GAMS (PATH) y licencia válida, y asegúrate de que `SolverFactory('gams')` esté disponible. El test de baseline aplicará `solver.options['solver'] = 'conopt'` automáticamente bajo el modo gams.
+Alertas: concentración máxima, thresholds por especie, tendencia y persistencia de deriva (severidad warning/critical afecta exit code ≥3).
 
-
-Ejecución futura (interfaz modular prevista):
-```powershell
-python -m biorefinery.scripts.run_mpc --scenario base
-```
-
-## Estado del Refactor (Resumen)
-Referencia detallada de objetivos y backlog: ver `biorefinery/docs/ROADMAP_FASE2.md`.
-
-- Extracción modular de neighborhoods, evaluación, DSDA, solver fallback y reformulación externa.
-- Logging centralizado (`biorefinery.logging_config`).
-- Pruebas unitarias iniciales (neighborhoods, line search) bajo `tests/`.
-- `extvars_gdp_to_mip` es actualmente un stub (passthrough) documentado en `docs/ARCHITECTURE.md`.
-- Nuevo builder incremental de modelo de fermentación (`biorefinery.models.fermentation.build_fermentation_model`) para migrar gradualmente la lógica DAE.  
-pytest
-```
-Para mayor detalle de cobertura:
-```powershell
-pytest --cov=biorefinery --cov-report=term-missing
-```
-
-## Readiness Runner: Adaptación NFE y Estabilidad (Novedades)
-Se incorporó un script de verificación multi-horizonte `run_fullscale_readiness.py` que valida:
-
-- Reproducibilidad vía baseline (`fullscale_baseline.json`) y `param_hash` de parámetros cinéticos.
-- Selección adaptativa de discretización (NFE) comparando una malla fina vs una malla gruesa.
-- Fallback multi-tier para robustez (tier0 normal, tier1 nfe-1, tier2 reducción de horizonte de predicción).
-- Métricas de deriva (`drift_l2_mean`) y métricas económicas promedio para comparar vs baseline extendida.
-- Alertas de estabilidad por concentración máxima, thresholds por especie y tendencia/persistencia de deriva.
-
-### Adaptación NFE (Flags Clave)
-| Flag | Descripción |
-|------|-------------|
-| `--adaptive-nfe` | Activa el modo adaptativo (coarse = nfe/2 vs fine = nfe base). |
-| `--adaptive-nfe-rel-tol` | Tolerancia relativa base (escala inverso con el horizonte). |
-| `--adaptive-nfe-min-tol` | Piso de tolerancia tras el escalado. |
-| `--adaptive-error-weights` | Pesos para norma ponderada: `eth:1,hold:1,drift:0.5,econ:0.2`. |
-| `--adaptive-min-speedup` | Mínimo speedup (fine/coarse) requerido para aceptar coarse. |
-
-La aceptación de la malla coarse requiere (a) que el peor error relativo y (b) la norma ponderada estén <= tolerancia efectiva y (c) el speedup sea >= mínimo. Si (a)+(b) se cumplen pero (c) falla, se fuerza la malla fina (`adapt_reason = coarse_within_tol_low_speedup`).
-
-Campos añadidos por horizonte (`HorizonResult`):
-- `adapt_metrics`: difs relativas (`rel_eth`, `rel_hold_up`, `rel_drift`, `rel_econ`, `worst`, `error_norm`).
-- `adapt_error_norm`: valor numérico de la norma ponderada.
-- `adapt_trial_times`: tiempos de ejecución coarse/fine para análisis de speedup.
-- `adapt_reason`: causa concreta de decisión.
-
-### Fallback Avanzado
-Se activa con `--advanced-fallback`. Si la corrida base falla:
-1. Tier1: reintenta con `nfe-1` (si >2).
-2. Tier2: reduce horizonte de predicción (`--fallback-pred-scale`, default 0.5). Si bajo `--strict-exit` y se usó tier2 (sin otras fallas) se retorna exit code 4 (alerta de degradación).
-
-### Estabilidad y Alertas
-| Flag | Función |
-|------|---------|
-| `--stability-max-conc-thresh` | Umbral sencillo para concentración final de etanol como proxy global. |
-| `--stability-species-threshold` | Lista `Sp:valor,...` para marcar excedencias en columnas `final_<Sp>_pred`. |
-| `--stability-drift-trend-threshold` | Pendiente mínima de tendencia de `drift_l2` (slope simple) para alertar. |
-| `--stability-drift-trend-window` | Ventana usada en slope simple. |
-| `--stability-drift-persist-window` | Longitud de cada sub-ventana para regresión LS de persistencia. |
-| `--stability-drift-persist-count` | Cuántas ventanas consecutivas deben superar el threshold para `critical`.
-
-Estructura de `stability_alerts`:
-```json
-{
-  "alerts": {
-    "max_concentration_exceeded": 6.7,
-    "species_Eth_exceeded": {"value": 6.7, "threshold": 5.0},
-    "drift_persist": {"slopes": [0.05, 0.06]}
-  },
-  "severity": "critical"
-}
-```
-`severity` = `warning` si hay un único evento leve, `critical` si múltiples especies exceden, deriva persistente o combinación de eventos. Cuando hay cualquier alerta se marca `stability_ok = False` y bajo `--strict-exit` puede elevar el código (>=3) o 4 si sólo hubo fallback de tier2.
-
-### Ejemplos
-```powershell
-# Adaptación con pesos y speedup mínimo
-python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 12,24 --adaptive-nfe --adaptive-error-weights eth:1,hold:1,drift:0.3,econ:0.1 --adaptive-min-speedup 1.25 --regen-baseline
-
-# Umbrales múltiples + deriva persistente
-python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 24 --adaptive-nfe --stability-species-threshold Eth:5,G:50 --stability-drift-trend-threshold 0.02 --stability-drift-persist-window 4 --stability-drift-persist-count 2
-
-# Fallback estricto
-python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 48 --adaptive-nfe --advanced-fallback --strict-exit
-```
+Ejemplos detallados: ver `USAGE_GUIDE.md`.
 
 ### Interpretación de Exit Codes (strict)
 | Código | Significado |
@@ -242,6 +168,66 @@ Interpretación rápida de `pipeline_summary.json`:
 Si `status` empieza con FAIL se detuvo en el gate indicado (salvo uso de `--force-full`).
 
 
+## ENMPC & Diagnósticos de Fermentación (Resumen)
+Resumen operativo (más ejemplos en la guía de uso).
+
+### Componentes Principales
+- `src/biorefinery/models/fermentation.py`: Builder DAE (`build_fermentation_model`) con flags (`nfe`, horizonte, cinéticas, dilución, rutas discretas).
+- `src/biorefinery/scripts/generate_unified_baseline.py`: Genera baseline JSON estable con `param_hash`.
+- `src/biorefinery/scripts/run_enmpc.py`: Loop ENMPC (receding-horizon) con warm start, perturbaciones y métricas de drift.
+- `src/biorefinery/models/model_diagnostics.py`: Ranking de violaciones de restricciones (pre y post solve).
+
+### Bounds y Estrategias de Estabilización
+Parámetros clave (CLI / args builder):
+- `max_concentration` (200.0 default) → upper bound global a `C[t,sp]` para evitar inflación numérica.
+- `min_hold_up` (100.0 default) → lower bound en `M(t)` para impedir colapso y degeneración de balances.
+
+Flujo recomendado al introducir cambios cinéticos:
+1. Regenerar baseline determinista (`--feasible-seed`) para aislar efectos de inicialización.
+2. Ajustar/confirmar bounds razonables.
+3. Ejecutar con `--diagnose` y revisar `max_constraint_violation` (<1e-8 ideal).
+4. (Opcional) Activar `--mass-balance-slack` para medir discrepancia estructural si surge inestabilidad.
+
+### Baseline Unificada
+Flags clave (`generate_unified_baseline.py`):
+- `--feasible-seed`: baseline sin solver (trayectorias constantes) reproducible.
+- `--fallback-if-infeasible`: genera baseline de reserva si el solve principal falla.
+- `--diagnose`: ranking de restricciones.
+
+Ejemplo:
+```powershell
+python -m biorefinery.scripts.generate_unified_baseline --output unified.json --refresh --diagnose
+```
+
+### Loop ENMPC
+Flags representativos:
+- `--feas-prepass`: estabiliza estado inicial con tasas fijadas.
+- `--mass-balance-slack` + `--mass-balance-slack-weight`: reformula balance de masa con slack penalizado (métrica `max_mass_slack`).
+
+Ejemplo:
+```powershell
+python -m biorefinery.scripts.run_enmpc --total-time-h 12 --step-time-h 6 --horizon-time-h 12 \
+  --nfe 2 --total-elements 10 --max-iterations 1 --feas-prepass \
+  --output diag_no_slack.json --max-concentration 200 --min-hold-up 100
+```
+
+Interpretación:
+- Slack grande + factible → falta ajustar ecuaciones/bounds (inconsistencia dinámica residual).
+- Inflación de concentraciones + `M` cerca del bound inferior → revisar dilución/alimentación y límites.
+
+### Buenas Prácticas
+- Commit atómico cuando cambie `param_hash` o baseline se regenere.
+- Activar `--diagnose` antes de introducir múltiples nuevas ecuaciones.
+- Usar baseline determinista para aislar cambios de velocidad solver vs cinética.
+
+### Próximos Pasos (ENMPC / Diagnóstico)
+- Test unitario que verifique slack≈0 en caso nominal estable.
+- Documentar ejemplo `--scenario` + hashing en pipeline.
+- Migrar cinéticas restantes y dependencias pH con toggles granulares.
+
+La documentación original del submódulo se consolidó aquí; consulte secciones de Readiness y Pipeline para la integración multi-horizonte.
+
+
 
 
 ## Logging
@@ -283,7 +269,7 @@ Extras de desarrollo: pytest + pytest-cov.
 Solver recomendado para continuo: Ipopt (instalación externa no incluida). Para MINLP considerar integrar BONMIN/SCIP vía Pyomo o GAMS si licencia disponible.
 
 ---
-_Si algo falla al correr el script original, documentar el error exacto y se añadirá sección de troubleshooting._
+Para problemas frecuentes (exit codes, drift, slack de masa) ver sección Troubleshooting en `USAGE_GUIDE.md`.
 
 ## Builder de Fermentación y Kinetics (Detalle)
 El builder acepta `include_kinetics` (False por defecto) para mantener un modelo mínimo rápido en CI y pruebas unitarias. Con la opción activada:

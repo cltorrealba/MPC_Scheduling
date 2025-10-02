@@ -3,6 +3,45 @@
 ## Overview
 This document summarizes the refactor from a monolithic legacy script (`biorefinery_models/Fermentation_Scheduling_and_MPC.py`) into a modular Python package under `biorefinery/src/biorefinery`. The goal is to separate pure optimization / enumeration utilities from domain model construction and experimentation logic, enabling maintainability, testing, and incremental feature evolution.
 
+```mermaid
+flowchart LR
+  subgraph Models
+    F[fermentation builder]\nroute_config
+    S[scheduling models]
+    SCN[scenario_loader]
+  end
+  subgraph Optimization
+    N[neighborhoods]
+    EV[evaluation]
+    SLV[solvers]
+    ADP[dsda_adapter]
+  end
+  subgraph Scripts
+    RDR[run_fullscale_readiness]
+    PIPE[run_fullscale_pipeline]
+    ENMPC[run_enmpc]
+    BASE[generate_unified_baseline]
+  end
+  subgraph Metrics
+    ECON[economic_*]
+    DRIFT[drift metrics]
+  end
+  SCN --> F
+  F --> ENMPC
+  F --> RDR
+  F --> ADP
+  ADP --> SLV
+  N --> EV --> SLV
+  SLV --> RDR
+  SLV --> ENMPC
+  ECON --> RDR
+  DRIFT --> RDR
+  RDR --> PIPE
+  BASE --> RDR
+  ECON --> ENMPC
+  DRIFT --> ENMPC
+```
+
 ## Legacy Situation (Before)
 - Single giant script mixing:
   - Pyomo model construction (fermentation, scheduling, MPC pieces)
@@ -132,60 +171,62 @@ Phase 5: Document advanced usage, scenario configuration, and reproducibility gu
 ---
 Maintained by: Biorefinery refactor effort. Update this document when moving DSDA orchestration or adding solver configuration abstraction.
 
-## Fermentation Builder Kinetics Extraction (Incremental Design)
+## Fermentation Builder & DSDA (Resumen)
+Los detalles exhaustivos de cinéticas incrementales, rutas discretas y futuras extensiones fueron movidos a:
+- `FUNCTION_REFERENCE.md` (sección Models & Optimization)
+- `USAGE_GUIDE.md` (pasos prácticos para descenso local de rutas y extensión cinética)
 
-The new `build_fermentation_model(include_kinetics: bool, detailed_kinetics: bool)` supports a progressive mode:
+Puntos clave conservados:
+- Builder escalable mediante flags `include_kinetics`, `detailed_kinetics`, `include_dilution`.
+- Rutas discretas gestionadas con `route_config` y helpers (`set_route_activation`, `optimize_routes_local_descent`).
+- DSDA completo aún parcialmente desacoplado; adaptadores ligeros proporcionan experimentar sin dependencias externas pesadas.
 
-| Aspect | include_kinetics=False | include_kinetics=True (detailed_kinetics=False) | include_kinetics=True & detailed_kinetics=True |
-|--------|------------------------|-----------------------------------------------|------------------------------------------------|
-| Params | Minimal (time, capacity) | Adds yields (`Y_*`), qmax, inhibition constants (`KI_*`, `KIP_*`, `KSP_*`), pH params (`K0/1/2{G,X}`) | Same as middle column |
-| Vars   | `C`, `M`, feeds, `pH` | + uptake `q[t,s]` (G,X,F,HMF,ACT) & product rates `R[t,r]` | Same |
-| Constraints | Mass skeleton only | Yield-based stub: ethanol, acetate from HMF, CO2 aggregate | Adds detailed glucose & xylose uptake (Gaussian pH + multi-inhibition) |
-| Future | — | Add detailed remaining substrates | Couple ODE balances & route toggles |
+## Readiness & Pipeline Architecture (Added Post Phase 2)
 
-Rationale: keep default lightweight for unit tests / CI while enabling progressive migration without breaking legacy script functionality.
+## Readiness & Pipeline Architecture (Added Post Phase 2)
+Para asegurar reproducibilidad y estabilidad antes de corridas full-scale se introdujo una capa de "readiness" y un pipeline secuencial:
 
-Next Kinetics Steps:
-1. (Partial Done) Detailed uptake expressions for glucose & xylose (flag `detailed_kinetics`).
-2. Extend to furfural, HMF, acetate with conditional activation under same flag or new granular flags.
-3. Tie concentration ODEs (`dCdt`) to uptake/production terms; add initial condition mapping and consistent units review.
-4. Scenario toggles / route activation flags to integrate with DSDA external variable logic (external enumeration of pathway activation).
-5. Regression tests comparing selected legacy trajectories vs new builder outputs (tolerance bands) + sensitivity tests (pH, inhibitor levels).
+### Scripts Clave
+- `run_fullscale_readiness.py`: Ejecuta uno o varios horizontes y produce `summary.json` con:
+  - Comparación contra baseline (`fullscale_baseline.json`).
+  - Adaptación NFE (malla coarse vs fine) usando norma ponderada y speedup mínimo.
+  - Fallback multinivel (tier1 nfe-1, tier2 reducción horizonte predicción).
+  - Alertas de estabilidad: concentraciones finales (`final_<sp>_pred`), thresholds por especie, tendencia y persistencia de deriva (`drift_l2`).
+  - Congelación de configuración (`config_freeze.json`) para hash de flags críticos.
+- `run_fullscale_pipeline.py`: Orquesta gates secuenciales (baseline corta → reproducibilidad → medium → full) generando `pipeline_summary.json` y reporte Markdown.
 
-## DSDA Readiness Enhancements (Current Status)
-Implemented to enable discrete search over metabolic route availability:
+### Adaptación NFE
+1. Corre malla coarse (nfe/2) y malla fine (nfe base).
+2. Calcula métricas relativas (EtOH, hold-up, drift, económica) + norma ponderada con pesos configurables.
+3. Acepta coarse si: (a) errores <= tolerancia efectiva y (b) speedup >= mínimo requerido.
+4. Si (a) sí y (b) no -> fuerza fine (razón registrada) para evitar regresión de simulación sin ganancia significativa de tiempo.
 
-- `route_config`: `Param(mutable=True)` indexed over ['G','X','F','HMF','ACT'] multiplicando las ecuaciones de velocidad detalladas (`q`). Valor 0 desactiva la ruta (tasa = 0), valor 1 la activa.
-- Helper `set_route_activation(model, route, active)` encapsula la mutación para bucles de enumeración.
-- Utilitario `get_route_external_variables(model)` expone snapshot 0/1 listo para integrarse a la capa de external vars del DSDA.
-- `initial_concentrations`: argumento del builder fijando condiciones iniciales en `t.first()` vía `Var.fix()`, garantizando reproducibilidad entre iteraciones DSDA.
-- Balances diferenciales extendidos (`G`, `X`, `Eth`, `F`, `HMF`, `ACT`) enlazan tasas a derivadas (`dCdt * final_time = +/- q/R`) permitiendo que cambios discretos en rutas afecten el objetivo dinámicamente.
- - Se añadieron balances de `Cell` (crecimiento neto simplificado) y `CO2` (producción agregada) y un flag `include_dilution` que introduce términos de dilución y alimentación basados en `F_C5liquid` y `F_liquified_fibers` y parámetros `feed_conc[j]`.
-### Dilution / Feed Modeling
-Cuando `include_dilution=True`:
-```
- dC_j/dt * final_time = RHS_core
-                        - (F_total / M) * C_j
-                        + (F_total / M) * feed_conc[j]
-```
-con `F_total = F_C5liquid + F_liquified_fibers`.
-Para especies sin entrada, `feed_conc[j]=0`.
+### Fallback
+Activado con `--advanced-fallback`:
+- Tier0: setup original.
+- Tier1: reintenta con `nfe-1`.
+- Tier2: escala horizonte de predicción (`--fallback-pred-scale`).
+Se registra el nivel usado para análisis; bajo modo estricto exit code 4 si solo tier2 fue necesario.
 
-Limitaciones actuales:
-- No se modela cambio de volumen explícito distinto de M(t) base.
-- No se ajustan rendimientos por mantenimiento dependiente de sustrato (simplificado).
+### Estabilidad
+Genera objeto `stability_alerts` con entradas:
+- `max_concentration_exceeded` (proxy global).
+- `species_<Sp>_exceeded` por cada umbral individual.
+- `drift_trend` (pendiente > threshold) y `drift_persist` (persistencia LS multi-ventana).
+La severidad: `warning` (evento aislado) o `critical` (persistencia/múltiples excedencias). Afecta exit code (≥3).
 
-Planned short-term extensions:
-1. Incorporar balance de Biomasa y CO2 incluyendo términos de dilución / alimentación.
-2. Usar `get_route_external_variables` dentro de un adaptador que alimente `external_ref`.
-3. Extender test de regresión (ya existe monotonicidad simple) a combinaciones múltiples de rutas (2 o más desactivadas).
+### Exit Codes
+Orden de prioridad (mayor domina):
+0 OK, 1 desvío baseline, 2 `param_hash` mismatch, 3 estabilidad, 4 fallback tier2, 5 config freeze mismatch.
 
-Interface sketch for external var extraction (futuro):
-```python
-def get_route_external_variables(model):
-  return {f"route_active_{r}": int(model.route_config[r].value) for r in model.route_config}
-```
+### Integración CI / Futuro
+- Fast CI podría ejecutar readiness en horizontes cortos con `--strict-exit` y fallar si code≥1 salvo regeneración autorizada.
+- Extended CI puede incluir coarse/fine timing para detectar degradaciones de performance.
 
-Esto permitirá mapear directamente a la lógica existente de enumeración sin re-estructurar drásticamente el flujo DSDA actual.
+### Justificación Arquitectónica
+Separar readiness de pipeline permite reusar la misma evaluación para:
+- Regresión de performance (coarse vs fine).
+- Asegurar reproducibilidad (baseline + config freeze).
+- Gate de estabilidad antes de horizontes largos costosos.
 
-Testing Note: Current tests assert presence/absence of components under the flag; future tests will include numeric sanity checks on rate magnitudes and monotonicity under perturbations.
+El diseño mantiene scripts independientes sin acoplar fuertemente al builder; se basa en entradas CLI y JSONs para permitir experimentación rápida sin modificar núcleo del modelo.
