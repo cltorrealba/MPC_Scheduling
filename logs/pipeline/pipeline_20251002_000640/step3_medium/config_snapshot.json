@@ -1,0 +1,43 @@
+{
+  "hash": "d871e174b448",
+  "config": {
+    "args": {
+      "log_dir": "logs\\pipeline\\pipeline_20251002_000640\\step3_medium",
+      "horizons": "24",
+      "nfe_map": null,
+      "step_h": 3.0,
+      "pred_h": null,
+      "disturb": 0.05,
+      "econ_lambda": 0.1,
+      "econ_lambda2": 0.0,
+      "seed": 123,
+      "auto": false,
+      "feedback": "all_species",
+      "baseline_tol_pct": 5.0,
+      "regen_baseline": true,
+      "adaptive_nfe": true,
+      "adaptive_nfe_rel_tol": 0.01,
+      "adaptive_nfe_min_tol": 0.002,
+      "baseline_compare_extended": false,
+      "strict_exit": true,
+      "advanced_fallback": false,
+      "fallback_pred_scale": 0.5,
+      "stability_max_conc_thresh": null,
+      "stability_drift_trend_window": 3,
+      "stability_drift_trend_threshold": null,
+      "adaptive_error_weights": "eth:1,hold:1,drift:0.5,econ:0.2",
+      "adaptive_min_speedup": 1.2,
+      "stability_species_threshold": null,
+      "stability_drift_persist_window": 4,
+      "stability_drift_persist_count": 2,
+      "config_freeze": true,
+      "config_freeze_keys": "horizons,step_h,pred_h,adaptive-nfe,adaptive-nfe-rel-tol,adaptive-error-weights,adaptive-min-speedup,feedback,econ-lambda,econ-lambda2"
+    },
+    "nfe_default_map": {
+      "12": 4,
+      "24": 6,
+      "48": 8,
+      "72": 10
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "config_hash": "40fa60d3d43a",
+  "results": [
+    {
+      "horizon_h": 48.0,
+      "nfe": 8,
+      "elapsed_s": 3.9202871322631836,
+      "ethanol_final": 6.700023108997322,
+      "hold_up_final": 999.9965509071897,
+      "csv_path": "logs\\pipeline\\pipeline_20251002_000640\\step4_full\\h48\\rolling_performance_log.csv",
+      "status": "ok",
+      "drift_l2_mean": 7.95412093191955,
+      "economic_mean": 1.222734290414234,
+      "stability_ok": true,
+      "adapt_mode": "fine",
+      "adapt_speedup_ratio": 0.935034753439092,
+      "adapt_metrics": {
+        "rel_eth": 0.0,
+        "rel_hold_up": 0.0,
+        "rel_drift": 1.116626748954624e-16,
+        "rel_econ": 0.0,
+        "worst": 1.116626748954624e-16,
+        "error_norm": 5.58313374477312e-17
+      },
+      "adapt_tol_effective": 0.0025,
+      "adapt_reason": "coarse_within_tol_low_speedup",
+      "fallback_tier": 0,
+      "prediction_h_used": 6.0,
+      "stability_alerts": null,
+      "adapt_error_norm": 5.58313374477312e-17,
+      "adapt_trial_times": {
+        "coarse_elapsed": 4.192664623260498,
+        "fine_elapsed": 3.9202871322631836
+      }
+    }
+  ],
+  "baseline": {
+    "mode": "baseline_created",
+    "ok": true,
+    "param_hash": "6202f75ae7e0"
+  },
+  "scalability_ratio": {
+    "mean_ratio": 2.2686846830226757e-05,
+    "max_ratio": 2.2686846830226757e-05
+  },
+  "param_hash": "6202f75ae7e0",
+  "config_freeze": {
+    "enabled": true,
+    "freeze_hash": "ed3bc5ed1b21",
+    "mismatch": null
+  },
+  "timestamp": 1759374435.2139277
+}

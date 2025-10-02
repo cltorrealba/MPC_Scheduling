@@ -1,0 +1,39 @@
+{
+  "created": 1759374414.0534172,
+  "tolerance_pct": 5.0,
+  "param_hash": "6202f75ae7e0",
+  "results": [
+    {
+      "horizon_h": 12.0,
+      "nfe": 4,
+      "elapsed_s": 1.9474377632141113,
+      "ethanol_final": 6.696637575755619,
+      "hold_up_final": 999.9991390556822,
+      "csv_path": "logs\\pipeline\\pipeline_20251002_000640\\step2_repro_short\\h12\\rolling_performance_log.csv",
+      "status": "ok",
+      "drift_l2_mean": 7.255289126889651,
+      "economic_mean": 0.7887426675881662,
+      "stability_ok": true,
+      "adapt_mode": "fine",
+      "adapt_speedup_ratio": 1.0051427737457659,
+      "adapt_metrics": {
+        "rel_eth": 0.0025982454019828284,
+        "rel_hold_up": 4.157092403310976e-10,
+        "rel_drift": 9.39012960687157e-05,
+        "rel_econ": 0.248179855102876,
+        "worst": 0.248179855102876,
+        "error_norm": 0.04970395057425172
+      },
+      "adapt_tol_effective": 0.01,
+      "adapt_reason": "coarse_exceeds_tol",
+      "fallback_tier": 0,
+      "prediction_h_used": 6.0,
+      "stability_alerts": null,
+      "adapt_error_norm": 0.04970395057425172,
+      "adapt_trial_times": {
+        "coarse_elapsed": 1.9374737739562988,
+        "fine_elapsed": 1.9474377632141113
+      }
+    }
+  ]
+}

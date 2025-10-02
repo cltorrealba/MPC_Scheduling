@@ -1,0 +1,27 @@
+{
+  "hash": "43ec0ec13a3f",
+  "keys": [
+    "horizons",
+    "step_h",
+    "pred_h",
+    "adaptive-nfe",
+    "adaptive-nfe-rel-tol",
+    "adaptive-error-weights",
+    "adaptive-min-speedup",
+    "feedback",
+    "econ-lambda",
+    "econ-lambda2"
+  ],
+  "snapshot": {
+    "horizons": "12",
+    "step_h": 3.0,
+    "pred_h": null,
+    "adaptive-nfe": true,
+    "adaptive-nfe-rel-tol": 0.01,
+    "adaptive-error-weights": "eth:1,hold:1,drift:0.5,econ:0.2",
+    "adaptive-min-speedup": 1.2,
+    "feedback": "all_species",
+    "econ-lambda": 0.1,
+    "econ-lambda2": 0.0
+  }
+}

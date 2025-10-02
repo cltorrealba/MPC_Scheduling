@@ -197,6 +197,51 @@ Para extender la lista:
 --config-freeze-keys "horizons,step_h,pred_h,adaptive-nfe,adaptive-nfe-rel-tol,feedback"
 ```
 
+### Pipeline Secuencial Full-Scale
+Para automatizar el flujo (baseline corta → reproducibilidad → horizonte medio → full scale) se incluye
+`run_fullscale_pipeline.py`.
+
+Secuencia por defecto:
+1. Baseline (horizontes cortos, regen baseline + freeze)
+2. Reproducibilidad (mismas mallas, compara KPIs < `--repro-tol`)
+3. Extensión medium (48 h por defecto)
+4. Full scale (72 h por defecto)
+
+Ejemplo rápido:
+```powershell
+python biorefinery/src/biorefinery/scripts/run_fullscale_pipeline.py \
+  --short-horizons 12,24 \
+  --medium-horizons 48 \
+  --full-horizons 72 \
+  --adaptive-nfe --strict
+```
+
+Flags clave:
+- `--repro-tol`: tolerancia relativa de reproducibilidad (default 0.01 = 1%).
+- `--force-full`: continúa aunque falle un gate.
+- `--extra-args "--econ-lambda 0.1 --econ-lambda2 0.02"`: propaga flags adicionales a cada etapa.
+- `--adaptive-nfe`: activa adaptación en todas las etapas.
+- `--strict`: pasa `--strict-exit` al readiness.
+
+Resultados:
+- `logs/pipeline/pipeline_YYYYmmdd_HHMMSS/step*/summary.json` por etapa.
+- `pipeline_summary.json` y `pipeline_report.md` con estado agregado.
+
+Interpretación rápida de `pipeline_summary.json`:
+```json
+{
+  "status": "PASS",
+  "steps": [
+    {"gate":"baseline_short","returncode":0,"exit_analysis":"ok"},
+    {"gate":"repro_short","returncode":0,"repro_issues":[]},
+    {"gate":"medium","returncode":0},
+    {"gate":"full","returncode":0}
+  ]
+}
+```
+Si `status` empieza con FAIL se detuvo en el gate indicado (salvo uso de `--force-full`).
+
+
 
 
 ## Logging
