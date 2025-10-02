@@ -22,6 +22,8 @@ class HorizonResult:
     adapt_metrics: dict | None = None  # relative differences
     adapt_tol_effective: float | None = None
     adapt_reason: str | None = None
+    fallback_tier: int | None = None  # 0 normal,1 nfe-1,2 pred_h reduced
+    prediction_h_used: float | None = None
 
 BASELINE_FILE = 'logs/fullscale_baseline.json'
 
@@ -47,14 +49,17 @@ def hash_config(d: dict) -> str:
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:12]
 
 
-def run_single_horizon(h, nfe, args) -> HorizonResult:
+def run_single_horizon(h, nfe, args, pred_scale: float = 1.0, tier: int = 0) -> HorizonResult:
     log_dir = pathlib.Path(args.log_dir)/f"h{int(h)}"
+    pred_h = args.pred_h if args.pred_h else min(2*args.step_h, h)
+    if pred_scale != 1.0:
+        pred_h = max(args.step_h, pred_h * pred_scale)
     cmd = [
         sys.executable,
         'biorefinery/src/biorefinery/scripts/run_empc_rolling.py',
         '--total-horizon-h', str(h),
         '--empc-step-h', str(args.step_h),
-        '--prediction-horizon-h', str(args.pred_h if args.pred_h else min(2*args.step_h, h)),
+        '--prediction-horizon-h', str(pred_h),
         '--nfe-per-h', str(nfe/ max(1.0, h)),
         '--log-dir', str(log_dir),
         '--exec-disturbance-alpha', str(args.disturb),
@@ -108,7 +113,7 @@ def run_single_horizon(h, nfe, args) -> HorizonResult:
     return HorizonResult(horizon_h=h, nfe=nfe, elapsed_s=elapsed, ethanol_final=ethanol_final,
                          hold_up_final=hold_up_final, csv_path=str(csv_path), status=status,
                          drift_l2_mean=drift_l2_mean, economic_mean=econ_mean, stability_ok=stability_ok,
-                         adapt_mode=None)
+                         adapt_mode=None, fallback_tier=tier, prediction_h_used=pred_h)
 
 
 def compare_with_baseline(results: list[HorizonResult], tol: float, regen: bool, path: pathlib.Path, param_hash: str, extended: bool):
@@ -171,6 +176,8 @@ def build_parser():
     p.add_argument('--adaptive-nfe-min-tol', type=float, default=0.002, help='Tolerancia mínima efectiva tras escalar por horizonte.')
     p.add_argument('--baseline-compare-extended', action='store_true', help='Incluir drift_l2_mean y economic_mean en comparación baseline.')
     p.add_argument('--strict-exit', action='store_true', help='Salir con código !=0 si baseline no ok, mismatch hash o instabilidades.')
+    p.add_argument('--advanced-fallback', action='store_true', help='Activar fallback de múltiples tiers (nfe-1, reducción de predicción).')
+    p.add_argument('--fallback-pred-scale', type=float, default=0.5, help='Factor para reducir predicción en fallback tier2 (ej 0.5 reduce 50%).')
     return p
 
 
@@ -208,27 +215,33 @@ def main():
     for h in horizons:
         base_nfe = nfe_map.get(int(h), math.ceil(h/3))
         if not args.adaptive_nfe or base_nfe <= 2:
-            res = run_single_horizon(h, base_nfe, args)
-            # Fallback
+            res = run_single_horizon(h, base_nfe, args, tier=0)
+            # Fallback chain
             if res.status != 'ok' and base_nfe > 2:
-                res = run_single_horizon(h, base_nfe-1, args)
+                # Tier1: nfe-1
+                res = run_single_horizon(h, base_nfe-1, args, tier=1)
+            if args.advanced_fallback and res.status != 'ok':
+                # Tier2: reduce prediction horizon
+                res = run_single_horizon(h, base_nfe-1 if base_nfe>2 else base_nfe, args, pred_scale=args.fallback_pred_scale, tier=2)
             if res.adapt_mode is None:
                 res.adapt_mode = 'fixed'
             results.append(res)
             continue
         # Adaptive path: try coarse first
         coarse_nfe = max(1, base_nfe // 2)
-        coarse_res = run_single_horizon(h, coarse_nfe, args)
+        coarse_res = run_single_horizon(h, coarse_nfe, args, tier=0)
         # If coarse failed, escalate directly to fine
         if coarse_res.status != 'ok':
-            fine_res = run_single_horizon(h, base_nfe, args)
+            fine_res = run_single_horizon(h, base_nfe, args, tier=0)
             if fine_res.status != 'ok' and base_nfe > 2:
-                fine_res = run_single_horizon(h, base_nfe-1, args)
+                fine_res = run_single_horizon(h, base_nfe-1, args, tier=1)
+            if args.advanced_fallback and fine_res.status != 'ok':
+                fine_res = run_single_horizon(h, base_nfe-1 if base_nfe>2 else base_nfe, args, pred_scale=args.fallback_pred_scale, tier=2)
             fine_res.adapt_mode = 'fine_failover'
             results.append(fine_res)
             continue
         # Run fine for comparison
-        fine_res = run_single_horizon(h, base_nfe, args)
+        fine_res = run_single_horizon(h, base_nfe, args, tier=0)
         if fine_res.status != 'ok':
             # Accept coarse but label uncertain
             coarse_res.adapt_mode = 'coarse_accept_fine_fail'
