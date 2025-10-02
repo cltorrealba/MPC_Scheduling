@@ -1,0 +1,26 @@
+{
+  "hash": "c3c984f8a8f9",
+  "config": {
+    "args": {
+      "log_dir": "logs/fullscale_demo",
+      "horizons": "12,24",
+      "nfe_map": null,
+      "step_h": 3.0,
+      "pred_h": null,
+      "disturb": 0.05,
+      "econ_lambda": 0.1,
+      "econ_lambda2": 0.0,
+      "seed": 123,
+      "auto": true,
+      "feedback": "all_species",
+      "baseline_tol_pct": 5.0,
+      "regen_baseline": false
+    },
+    "nfe_default_map": {
+      "12": 4,
+      "24": 6,
+      "48": 8,
+      "72": 10
+    }
+  }
+}

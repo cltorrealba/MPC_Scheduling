@@ -1,0 +1,30 @@
+{
+  "created": 1759365501.3430998,
+  "tolerance_pct": 5.0,
+  "results": [
+    {
+      "horizon_h": 12.0,
+      "nfe": 4,
+      "elapsed_s": 2.164881706237793,
+      "ethanol_final": 6.696637575755619,
+      "hold_up_final": 999.9991390556822,
+      "csv_path": "logs\\fullscale_demo\\h12\\rolling_performance_log.csv",
+      "status": "ok",
+      "drift_l2_mean": 7.254607845837285,
+      "economic_mean": 0.9844927085436532,
+      "stability_ok": true
+    },
+    {
+      "horizon_h": 24.0,
+      "nfe": 6,
+      "elapsed_s": 3.6698100566864014,
+      "ethanol_final": 6.700011406611458,
+      "hold_up_final": 999.9982780802367,
+      "csv_path": "logs\\fullscale_demo\\h24\\rolling_performance_log.csv",
+      "status": "ok",
+      "drift_l2_mean": 7.8119598480496535,
+      "economic_mean": 1.2088716465687448,
+      "stability_ok": true
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "meta": {
+    "git_commit": "38fe2f9",
+    "git_dirty": true,
+    "python_version": "3.10.18",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "timestamp_utc": "2025-10-01T23:56:22Z",
+    "mode": "empc_rolling"
+  },
+  "step_row": {
+    "step_index": 3,
+    "t_start_h": 9.0,
+    "t_end_h": 12.0,
+    "prediction_h": 6.0,
+    "apply_h": 3.0,
+    "nfe": 3,
+    "mod_elapsed_s": 0.23384642601013184,
+    "final_ethanol_pred": 6.698837133493325,
+    "final_hold_up_pred": 999.999140012193,
+    "productivity_pred": 1.1164728555822208,
+    "git_commit": "38fe2f9",
+    "git_dirty": true,
+    "python_version": "3.10.18",
+    "feasible_flag": 0
+  },
+  "raw": {
+    "meta": {
+      "sched_horizon_h": 6.0,
+      "sched_periods": 4,
+      "fer_horizon_h": 6.0,
+      "nfe": 3,
+      "solver": null,
+      "cin_scale": 1.0,
+      "max_concentration": 200.0,
+      "min_hold_up": 100.0
+    },
+    "kpis": {
+      "final_ethanol_conc": 6.698837133493325,
+      "final_hold_up": 999.999140012193,
+      "mapped_Cin": {
+        "G": 1.2422507537777428e-06,
+        "X": 6.211253768888714e-07,
+        "ACT": 1.0765127012899923e-07,
+        "HMF": 8.260747961707984e-09,
+        "F": 0.0
+      },
+      "prod_net": {
+        "G": 1.2422507537777428e-06,
+        "X": 6.211253768888714e-07,
+        "ACT": 1.0765127012899923e-07,
+        "HMF": 8.260747961707984e-09,
+        "F": -4.130373980853992e-08,
+        "Cell": 0.0
+      },
+      "scheduling_status": "optimal",
+      "fermentation_status": "optimal",
+      "final_state_M": 999.999140012193
+    },
+    "final_state": {
+      "C": {
+        "CS": 100.00007625941896,
+        "XS": 100.00007625941896,
+        "LS": 100.00007625941896,
+        "C": 100.00007625941896,
+        "G": 0.002447775744377911,
+        "X": 4.5434574442160505e-05,
+        "F": 8.365404844781747e-12,
+        "E": 100.00007625941896,
+        "AC": 100.00007625941896,
+        "Cell": 1.000000859988608,
+        "Eth": 6.698837133493325,
+        "CO2": 6.708836529417593,
+        "ACT": 0.03342533676169691,
+        "HMF": 6.1267561593330875e-06,
+        "Base": 100.00007625941896
+      },
+      "M": 999.999140012193,
+      "abs_final_time_h": 15.0
+    },
+    "scheduling": {
+      "objective_value": 8.891483763814238e-08,
+      "batches": {
+        "Hydro|U1|0": 1.0487330491250032e-06,
+        "Hydro|U1|1": 4.57948304570814e-07,
+        "Hydro|U1|2": 3.153919225833352e-07,
+        "Hydro|U1|3": 2.483446466837523e-07,
+        "Detox|U1|0": 6.734823855298212e-08,
+        "Detox|U1|1": 1.2357355236365555e-07,
+        "Detox|U1|2": 1.1564293743421663e-07,
+        "Detox|U1|3": 1.0647266973454487e-07
+      }
+    }
+  }
+}

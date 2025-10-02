@@ -299,6 +299,146 @@ Metadata añadida en `meta` del JSON:
 
 Permite concatenar varios JSON (no comprimidos) que comparten `config_hash`:
 
+## Rolling EMPC Avanzado (Scheduling + Fermentación Acoplados)
+
+Script: `biorefinery/src/biorefinery/scripts/run_empc_rolling.py`
+
+Este script ejecuta un bucle de control económico predictivo (EMPC) que en cada paso:
+1. Resuelve un modelo integrado scheduling → fermentación para un horizonte de predicción.
+2. Captura el estado aplicado a fracción `apply_h/prediction_h` (state intermedio) y/o estado final.
+3. Calcula métricas económicas y de deriva (drift) entre estado aplicado predicho y estado “realizado” con perturbaciones.
+4. Propaga el estado al siguiente paso según modo seleccionado (final, applied, realized o heurístico auto).
+5. (Opcional) Retroalimenta inventario inicial del scheduling con el estado fermentación previo (feedback scheduling).
+
+### Flags Clave Nuevas
+
+| Flag | Descripción |
+|------|-------------|
+| `--propagation-mode {final,applied,realized}` | Selecciona el estado que se usa como condición inicial en el siguiente paso. |
+| `--auto-propagation` + `--auto-drift-threshold` | Heurística: usa realized si la deriva L2 ≤ threshold; si no, usa final. |
+| `--exec-disturbance-alpha` | Ruido multiplicativo aplicado para generar el estado realized (simula perturbación de ejecución). |
+| `--drift-exclude-holdup` | Excluye el hold‑up `M` del cálculo de deriva. |
+| `--warm-start-schedule` | Usa lotes (batches) previos como valores iniciales de scheduling. |
+| `--fermentation-warm-start` | Inicializa puntos interiores de la discretización DAE con el estado final previo. |
+| `--economic-lambda` | Penalización (# de batches no cero) en `economic_metric`. |
+| `--economic-lambda2` | Penalización adicional (promedio tamaño de batch) en `economic_metric2`. |
+| `--export-drift-species` | Exporta CSV con deriva por especie en cada paso. |
+| `--schedule-horizon-mode {prediction,applied}` | Permite acortar horizonte de scheduling al horizonte aplicado. |
+| `--feedback-scheduling-mode {none,ethanol,all_species}` | Retroalimentación de inventario inicial del scheduling a partir del estado previo de fermentación. |
+| `--feedback-scheduling-scale` | Factor de escala al mapear concentraciones a inventario inicial. |
+| `--drift-window N` | Tamaño de ventana para promedios móviles de deriva. |
+| `--drift-alert-threshold X` | Genera columna booleana `drift_alert` si `drift_l2_avg > X`. |
+
+### Columnas CSV Principales
+
+| Columna | Descripción |
+|---------|-------------|
+| `prediction_h`, `apply_h` | Horizonte de predicción y horizonte efectivamente aplicado (paso MPC). |
+| `propagation_mode` | Modo usado para propagar estado al siguiente paso. |
+| `schedule_horizon_h`, `horizon_gap` | Horizonte empleado en scheduling y brecha vs predicción. |
+| `final_ethanol_pred`, `ethanol_applied_pred` | Concentraciones de Etanol al final y en el punto aplicado. |
+| `economic_metric` | (EtOH_applied/apply_h) − λ1 * (#batches). |
+| `economic_metric2` | (EtOH_applied/apply_h) − λ1 * (#batches) − λ2 * (avg_batch_size). |
+| `schedule_feasible_flag` | 1 si scheduling terminó en condición óptima. |
+| `schedule_obj_value` | Valor objetivo del scheduling (si disponible). |
+| `drift_l2`, `drift_max_abs` | Métricas de deriva instantánea paso a paso. |
+| `drift_l2_avg`, `drift_max_abs_avg` | Promedios móviles (ventana `--drift-window`). |
+| `drift_l2_cum`, `drift_max_abs_cum` | Acumulados desde el inicio. |
+| `drift_alert` | 1 si promedio móvil excede umbral. |
+
+### Métrica Económica Extendida
+
+Se definieron dos métricas:
+
+1. `economic_metric = ethanol_applied / apply_h - λ1 * nbatches`
+2. `economic_metric2 = ethanol_applied / apply_h - λ1 * nbatches - λ2 * avg_batch_size`
+
+Donde:
+- `nbatches`: número de batches con valor absoluto > 1e-12.
+- `avg_batch_size`: promedio de tamaños de batches no cero.
+- `λ1 = --economic-lambda`, `λ2 = --economic-lambda2`.
+
+### Deriva (Drift)
+
+La deriva se calcula aplicando ruido multiplicativo `α` a cada concentración (si `< 500`) generando un estado realized. Métricas:
+- `drift_l2 = ||C_realized - C_predicted||_2` (incluye hold‑up salvo `--drift-exclude-holdup`).
+- `drift_max_abs = max_i |Δ_i|`.
+- Promedios móviles y acumulados permiten monitoreo de tendencia.
+- `drift_alert = 1` si `drift_l2_avg > threshold`.
+
+### Retroalimentación Scheduling (Closed-Loop Inventories)
+
+Con `--feedback-scheduling-mode` se modifica el inventario inicial del siguiente problema de scheduling a partir del estado fermentación propagado:
+- `ethanol`: solo Etanol → inventario `F` (ejemplo simplificado).
+- `all_species`: todas las especies compartidas (`G,X,ACT,HMF,F,Cell`).
+Escalamiento vía `--feedback-scheduling-scale`.
+
+El payload JSON por paso incluye `scheduling.initial_inventory_used` para trazabilidad.
+
+### Export de Deriva por Especie
+
+Si se activa `--export-drift-species`, se genera `drift_species_log.csv` con columnas: `step_index,mode,<species...>` y valores de `realizado - predicho`.
+
+### Ejemplo de Ejecución
+
+```powershell
+python biorefinery/src/biorefinery/scripts/run_empc_rolling.py \`n  --total-horizon-h 12 --empc-step-h 3 --prediction-horizon-h 6 \`n  --nfe-per-h 0.5 --exec-disturbance-alpha 0.05 --auto-propagation \`n  --economic-lambda 0.1 --economic-lambda2 0.05 --drift-window 3 --drift-alert-threshold 0.5 \`n  --feedback-scheduling-mode all_species --feedback-scheduling-scale 0.5 --export-drift-species
+```
+
+### Buenas Prácticas
+
+- Activar warm starts (`--warm-start-schedule` y `--fermentation-warm-start`) para reducir tiempo de solución en corridas largas.
+- Usar `--auto-propagation` para adaptarse dinámicamente a la calidad predictiva (prefiere realized si la deriva es baja).
+- Monitorear `drift_l2_avg` y `drift_alert` para diagnosticar degradación de fidelidad del modelo.
+- Comparar `economic_metric` vs `economic_metric2` para evaluar sensibilidad a penalización de tamaño de lotes.
+
+### Próximos Pasos Potenciales
+
+- Incorporar retroalimentación sobre variables de decisión futuras (ajuste dinámico de horizonte de scheduling según deriva acumulada).
+- Inclusión de costos energéticos y de recursos en `economic_metric2`.
+- Reentrenamiento/ajuste de parámetros cinéticos en línea cuando `drift_alert` persiste.
+
+## Full-Scale Readiness Runner
+
+Script: `biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py`
+
+Objetivo: ejecutar múltiples horizontes (p.ej. 12, 24, 48 h) con escalamiento de discretización y comparar KPIs (Etanol, Hold-up) contra una baseline tolerantizada (±5% por defecto).
+
+Características:
+- Pre‑chequeo corto sanity (4 h total, paso 1 h) antes de horizontes largos.
+- Mapeo de nfe configurable (`--nfe-map 12:4,24:6,48:8`).
+- Fallback: si un horizonte falla reintenta con nfe-1.
+- Snapshot de configuración + hash reproducible.
+- Comparación baseline con registro incremental (crea baseline si no existe o `--regen-baseline`).
+- Métrica de escalabilidad aproximada: `elapsed_s / (horizon_h*3600)`.
+- Retroalimentación scheduling y auto-propagation opcionales.
+
+Uso básico (primera vez crea baseline):
+```powershell
+python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 12,24 --auto --feedback all_species --disturb 0.05
+```
+Comparación posterior (no regenerar baseline):
+```powershell
+python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 12,24 --auto --feedback all_species
+```
+Regenerar baseline explícitamente:
+```powershell
+python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 12,24,48 --regen-baseline
+```
+
+Campos clave en `summary.json`:
+| Campo | Descripción |
+|-------|------------|
+| `config_hash` | Hash de configuración congelada. |
+| `results[]` | Lista de horizontes con métricas (ethanol_final, hold_up_final, drift_l2_mean, economic_mean). |
+| `baseline.mode` | `baseline_created` o `baseline_compare`. |
+| `baseline.issues[]` | Diferencias que superan tolerancia. |
+| `scalability_ratio.mean_ratio` | Promedio de (tiempo/hora_simulada). |
+| `READINESS` (stdout) | PASS / ATTENTION informativo. |
+
+Recomendación de criterios “ready”: baseline sin issues, `stability_ok=True` en todos los horizontes, ratio de escalabilidad no creciendo abruptamente al aumentar horizonte.
+
+
 ```powershell
 python biorefinery/src/biorefinery/scripts/merge_enmpc_runs.py etapa1.json etapa2.json --output merged.json
 ```
@@ -766,6 +906,78 @@ Buenas prácticas:
 - Fijar `--seed` para reproducibilidad completa de perturbaciones.
 
 La prueba `test_enmpc_resume.py` valida esta funcionalidad end-to-end.
+
+### Rolling EMPC (Scheduling→Fermentación Prototype)
+Se añadió un prototipo ligero de loop rolling (separado del runner ENMPC completo) para encadenar resoluciones de un horizonte de predicción más largo que el paso aplicado, reutilizando el estado final como condición inicial del siguiente paso.
+
+Script: `biorefinery/src/biorefinery/scripts/run_empc_rolling.py`
+
+Uso básico:
+```powershell
+python biorefinery/src/biorefinery/scripts/run_empc_rolling.py ^
+  --total-horizon-h 12 --empc-step-h 3 --prediction-horizon-h 6 ^
+  --nfe-per-h 0.5 --store-json --log-dir logs/empc_rolling
+```
+
+Conceptos:
+- `prediction-horizon-h (H)`: Ventana de optimización (programación mínima + fermentación) para cada solve.
+- `empc-step-h (Δ)`: Porción aplicada antes de “receder” el horizonte. Se impone Δ ≤ H.
+- `total-horizon-h`: Tiempo total acumulado a cubrir (el loop termina cuando se alcanza o excede).
+- `nfe-per-h`: Densidad de discretización → `nfe = ceil(H * nfe_per_h)`.
+- `schedule-horizon-mode`: Si `prediction` (default) la horizon de scheduling = H; si `applied` solo cubre Δ (acelera solves cuando scheduling es caro).
+
+Flags nuevos / clave:
+- `--warm-start-schedule`: Reutiliza lotes (B) del solve anterior como initial values.
+- `--schedule-horizon-mode {prediction|applied}`: Ajusta duración del sub-problema de scheduling.
+- `--exec-disturbance-alpha a`: Aplica perturbación pseudo-aleatoria a estado aplicado para métricas de drift.
+- `--drift-exclude-holdup`: Excluye `M` del cálculo de drift.
+- `--seed`: Semilla reproducible para ruido de ejecución.
+- `--propagation-mode {final|applied|realized}`:
+  - `final`: (default) Propaga el estado al final de H.
+  - `applied`: Propaga el estado en el punto aplicado (Δ/H) sin disturbio.
+  - `realized`: Propaga el estado aplicado perturbado (closed-loop simple con ruido de ejecución).
+  - Usar con `--auto-propagation` para elegir dinámicamente entre `realized` y `final` según drift.
+- `--auto-propagation` + `--auto-drift-threshold`: Selección heurística basada en L2 drift.
+- `--fermentation-warm-start`: Inicializa nodos internos de la fermentación con el estado propagado anterior.
+- `--economic-lambda λ`: Añade métrica económica `economic_metric = ethanol_applied/Δ - λ * (#batches != 0)`.
+- `--export-drift-species`: Genera `drift_species_log.csv` con drift por especie (pred vs realized) por paso.
+- Columnas nuevas: `schedule_horizon_h`, `horizon_gap`, `economic_metric`.
+
+Salidas:
+1. CSV `rolling_performance_log.csv` columnas:
+  `step_index,t_start_h,t_end_h,prediction_h,apply_h,nfe,mod_elapsed_s,predicted_end_h,applied_abs_time_h,final_ethanol_pred,ethanol_applied_pred,final_hold_up_pred,hold_up_applied_pred,productivity_pred,git_commit,git_dirty,python_version,feasible_flag,drift_l2,drift_max_abs`.
+  - `predicted_end_h`: fin absoluto del horizonte de predicción.
+  - `applied_abs_time_h`: tiempo absoluto (h) del punto aplicado (fracción Δ/H de la predicción).
+  - `ethanol_applied_pred` / `hold_up_applied_pred`: valores pronosticados al corte aplicado (antes de continuar hasta H).
+  - `drift_l2`, `drift_max_abs`: métricas de desviación entre estado aplicado pronosticado y estado perturbado (si `--exec-disturbance-alpha>0`).
+2. (Opcional `--store-json`) archivos `steps/step_XXX.json` con payload completo + `final_state` (concentraciones y hold-up) usado como handoff.
+
+Handoff de estado:
+- Cada iteración extrae estado aplicado (fracción Δ/H) y estado final; actualmente la propagación usa el estado final (política zero‑order hold) pero ya se expone `applied_state` para futura diferenciación.
+- `applied_state` incluye `tau_selected` (punto de discretización cercano) y `abs_time_h`.
+
+Limitaciones actuales / Próximas extensiones:
+- Propagación aún basada en estado final; siguiente paso: opción para propagar estado aplicado.
+- Modo `realized` actualmente no retroalimenta error en scheduling (solo en condiciones iniciales de fermentación).
+- No se hace warm start de duales / estructura Pyomo (solo valores de B en scheduling).
+- Disturbio aplicado no retroalimenta todavía a la predicción siguiente (sería modo closed-loop con error de seguimiento).
+- Posible integración con métrica económica y control de alimentación variable.
+
+Razón de coexistencia con `run_enmpc`:
+> Este prototipo valida la tubería Scheduling→Cin→Fermentación en modo receding antes de integrar objetivos económicos y control de alimentación detallado del loop ENMPC principal.
+
+Regeneración / limpieza:
+```powershell
+Remove-Item -Recurse -Force logs/empc_rolling
+python biorefinery/src/biorefinery/scripts/run_empc_rolling.py --total-horizon-h 9 --empc-step-h 3 --prediction-horizon-h 6 --nfe-per-h 0.5 --log-dir logs/empc_rolling
+```
+
+Pruebas futuras sugeridas:
+- Smoke test: ejecutar 2 pasos y validar monotonicidad de `t_start_h` y propagación de `Eth`.
+- Test de handoff: verificar continuidad (diferencia pequeña entre estado inicial de paso k y final del paso k-1 para especies no consumidas drásticamente).
+- Validación: CSV contenga exactamente `total_steps = ceil(total_horizon_h / empc_step_h)` filas (última puede truncar si Δ no divide exacto).
+
+Sección sujeta a expansión conforme el prototipo se fusione con funciones de drift y objetivos económicos del runner ENMPC.
 
 ### Roadmap ENMPC
 - Mejora warm start (inicializar también derivadas y estado dual).

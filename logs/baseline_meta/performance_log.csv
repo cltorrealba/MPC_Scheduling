@@ -1,0 +1,2 @@
+timestamp,horizon_h,nfe,sched_periods,mod_final_ethanol,leg_final_ethanol,delta_ethanol,mod_final_hold_up,leg_final_hold_up,delta_hold_up,productivity_ethanol_per_h,legacy_term_cond,legacy_status,legacy_elapsed_s,modular_elapsed_s,legacy_n_vars,legacy_n_cons,legacy_feasible_flag,git_commit,git_dirty,python_version
+2025-10-01T23:48:26Z,12.0,4,4,6.252947592465707,0.00010005323660341607,6.252847539229104,999.9995694261319,2601.3058263676244,-1601.3062569414924,0.521078966038809,infeasible,not_optimal,7.00822901725769,0.813694953918457,1301,1128,0,38fe2f9,True,3.10.18

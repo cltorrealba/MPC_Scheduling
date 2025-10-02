@@ -33,9 +33,10 @@ def summarize_kpis(payload: ComparisonPayload) -> Dict[str, Any]:
             productivity = mod_eth / horizon
     except Exception:
         productivity = None
+    meta_block = payload.get('meta', {})
     legacy_n_vars = payload.get('legacy', {}).get('n_vars')
     legacy_n_cons = payload.get('legacy', {}).get('n_cons')
-    modular_elapsed = payload.get('meta', {}).get('modular_elapsed_s')
+    modular_elapsed = meta_block.get('modular_elapsed_s')
     legacy_term = leg.get('termination_condition')
     # Feasibility heuristic
     feasible = True
@@ -62,6 +63,9 @@ def summarize_kpis(payload: ComparisonPayload) -> Dict[str, Any]:
         'legacy_n_vars': legacy_n_vars,
         'legacy_n_cons': legacy_n_cons,
         'legacy_feasible_flag': int(feasible),
+        'git_commit': meta_block.get('git_commit'),
+        'git_dirty': meta_block.get('git_dirty'),
+        'python_version': meta_block.get('python_version'),
     }
 
 CSV_HEADER = [
@@ -70,7 +74,8 @@ CSV_HEADER = [
     'mod_final_hold_up','leg_final_hold_up','delta_hold_up',
     'productivity_ethanol_per_h',
     'legacy_term_cond','legacy_status','legacy_elapsed_s',
-    'modular_elapsed_s','legacy_n_vars','legacy_n_cons','legacy_feasible_flag'
+    'modular_elapsed_s','legacy_n_vars','legacy_n_cons','legacy_feasible_flag',
+    'git_commit','git_dirty','python_version'
 ]
 
 def write_csv_row(row: Dict[str, Any], path: str | pathlib.Path, append: bool = True) -> None:

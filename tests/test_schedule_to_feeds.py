@@ -10,7 +10,7 @@ def test_apply_schedule_to_feeds_basic():
     # Fermentation model with mass balance to have Cin
     m_f = build_fermentation_model(include_kinetics=False, enable_mass_balance=True)
     # Inicialmente Cin especie 'G' debe existir y ser 0
-    assert abs(float(m_f.Cin['G'])) < 1e-12
+    assert abs(pe.value(m_f.Cin['G'])) < 1e-12
     # Scheduling simple produce pseudo "G_state" mapeado a 'G'
     tasks = [TaskDef(name='ProdG', inputs={}, outputs={'G_state':1.0}, units=['U'], min_batch=5, max_batch=5, process_time_h=1.0)]
     units = [UnitDef(name='U')]
@@ -32,7 +32,7 @@ def test_apply_schedule_to_feeds_basic():
     updated = apply_schedule_to_feeds(m_f, m_s, mapping={'G_state':'G'})
     assert updated == 1
     # Cin['G'] debe haber aumentado (igual al batch total producido * scale_factor=1)
-    assert float(m_f.Cin['G']) >= 5 - 1e-9
+    assert pe.value(m_f.Cin['G']) >= 5 - 1e-9
 
 
 def test_apply_schedule_to_feeds_weighted():
@@ -55,5 +55,5 @@ def test_apply_schedule_to_feeds_weighted():
     updated = apply_schedule_to_feeds(m_f, m_s, mapping={'G_state':'G','X_state':'X'})
     assert updated == 2
     # Cin 'G' should reflect 10*0.6 and Cin 'X' reflect 10*0.4 within tolerance
-    assert abs(float(m_f.Cin['G']) - 6.0) < 1e-6
-    assert abs(float(m_f.Cin['X']) - 4.0) < 1e-6
+    assert abs(pe.value(m_f.Cin['G']) - 6.0) < 1e-6
+    assert abs(pe.value(m_f.Cin['X']) - 4.0) < 1e-6

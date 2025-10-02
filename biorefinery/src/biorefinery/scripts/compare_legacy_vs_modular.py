@@ -16,6 +16,7 @@ Usage:
 """
 from __future__ import annotations
 import argparse, json, time
+from biorefinery.metadata import gather_run_metadata
 from biorefinery.scripts.comparison_helpers import run_modular, run_legacy_snapshot
 
 
@@ -65,13 +66,15 @@ def compare(args):
         'hold_up_delta': _delta(mod_M, leg_M),
         'hold_up_rel': _reld(mod_M, leg_M),
     }
+    base_meta = {
+        'horizon_h': args.horizon_h,
+        'nfe': args.nfe,
+        'sched_periods': args.sched_periods,
+        'modular_elapsed_s': mod_elapsed,
+    }
+    full_meta = gather_run_metadata(base_meta)
     payload = {
-        'meta': {
-            'horizon_h': args.horizon_h,
-            'nfe': args.nfe,
-            'sched_periods': args.sched_periods,
-            'modular_elapsed_s': mod_elapsed,
-        },
+        'meta': full_meta,
         'modular': mod['kpis'],
         'legacy': legacy,
         'comparison': comp,
