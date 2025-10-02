@@ -23,6 +23,7 @@ def build_args(horizon_h: float, nfe: int, solver: str | None):
     a.tee = False
     return a
 
+SPECIES_EXPORT = ['G','X','F','HMF','ACT','Eth','Cell','CO2']
 CSV_HEADER = [
     'step_index','t_start_h','t_end_h','prediction_h','apply_h','nfe','mod_elapsed_s',
     'predicted_end_h','applied_abs_time_h','propagation_mode','schedule_horizon_h','horizon_gap',
@@ -30,7 +31,7 @@ CSV_HEADER = [
     'productivity_pred','economic_metric','economic_metric2','git_commit','git_dirty','python_version','feasible_flag',
     'schedule_feasible_flag','schedule_obj_value',
     'drift_l2','drift_max_abs','drift_l2_avg','drift_max_abs_avg','drift_l2_cum','drift_max_abs_cum','drift_alert'
-]
+] + [f'final_{sp}_pred' for sp in SPECIES_EXPORT]
 
 def write_row(path: pathlib.Path, row: Dict[str, Any]):
     new_file = not path.exists()
@@ -273,6 +274,14 @@ def main():
         drift_alert = None
         if args.drift_alert_threshold is not None and drift_l2_avg is not None:
             drift_alert = int(drift_l2_avg > args.drift_alert_threshold)
+        final_species = {}
+        if final_state_full and isinstance(final_state_full, dict):
+            Cdict = final_state_full.get('C') or {}
+            for sp in SPECIES_EXPORT:
+                val = Cdict.get(sp)
+                if isinstance(val,(int,float)):
+                    final_species[sp] = val
+
         row = {
             'step_index': step,
             't_start_h': t_current,
@@ -306,6 +315,7 @@ def main():
             'drift_l2_cum': drift_l2_cum,
             'drift_max_abs_cum': drift_max_cum,
             'drift_alert': drift_alert,
+            **{f'final_{sp}_pred': final_species.get(sp) for sp in SPECIES_EXPORT}
         }
         write_row(csv_path, row)
         if args.store_json:

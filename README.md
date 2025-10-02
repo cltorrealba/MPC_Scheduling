@@ -94,6 +94,84 @@ Para mayor detalle de cobertura:
 pytest --cov=biorefinery --cov-report=term-missing
 ```
 
+## Readiness Runner: Adaptación NFE y Estabilidad (Novedades)
+Se incorporó un script de verificación multi-horizonte `run_fullscale_readiness.py` que valida:
+
+- Reproducibilidad vía baseline (`fullscale_baseline.json`) y `param_hash` de parámetros cinéticos.
+- Selección adaptativa de discretización (NFE) comparando una malla fina vs una malla gruesa.
+- Fallback multi-tier para robustez (tier0 normal, tier1 nfe-1, tier2 reducción de horizonte de predicción).
+- Métricas de deriva (`drift_l2_mean`) y métricas económicas promedio para comparar vs baseline extendida.
+- Alertas de estabilidad por concentración máxima, thresholds por especie y tendencia/persistencia de deriva.
+
+### Adaptación NFE (Flags Clave)
+| Flag | Descripción |
+|------|-------------|
+| `--adaptive-nfe` | Activa el modo adaptativo (coarse = nfe/2 vs fine = nfe base). |
+| `--adaptive-nfe-rel-tol` | Tolerancia relativa base (escala inverso con el horizonte). |
+| `--adaptive-nfe-min-tol` | Piso de tolerancia tras el escalado. |
+| `--adaptive-error-weights` | Pesos para norma ponderada: `eth:1,hold:1,drift:0.5,econ:0.2`. |
+| `--adaptive-min-speedup` | Mínimo speedup (fine/coarse) requerido para aceptar coarse. |
+
+La aceptación de la malla coarse requiere (a) que el peor error relativo y (b) la norma ponderada estén <= tolerancia efectiva y (c) el speedup sea >= mínimo. Si (a)+(b) se cumplen pero (c) falla, se fuerza la malla fina (`adapt_reason = coarse_within_tol_low_speedup`).
+
+Campos añadidos por horizonte (`HorizonResult`):
+- `adapt_metrics`: difs relativas (`rel_eth`, `rel_hold_up`, `rel_drift`, `rel_econ`, `worst`, `error_norm`).
+- `adapt_error_norm`: valor numérico de la norma ponderada.
+- `adapt_trial_times`: tiempos de ejecución coarse/fine para análisis de speedup.
+- `adapt_reason`: causa concreta de decisión.
+
+### Fallback Avanzado
+Se activa con `--advanced-fallback`. Si la corrida base falla:
+1. Tier1: reintenta con `nfe-1` (si >2).
+2. Tier2: reduce horizonte de predicción (`--fallback-pred-scale`, default 0.5). Si bajo `--strict-exit` y se usó tier2 (sin otras fallas) se retorna exit code 4 (alerta de degradación).
+
+### Estabilidad y Alertas
+| Flag | Función |
+|------|---------|
+| `--stability-max-conc-thresh` | Umbral sencillo para concentración final de etanol como proxy global. |
+| `--stability-species-threshold` | Lista `Sp:valor,...` para marcar excedencias en columnas `final_<Sp>_pred`. |
+| `--stability-drift-trend-threshold` | Pendiente mínima de tendencia de `drift_l2` (slope simple) para alertar. |
+| `--stability-drift-trend-window` | Ventana usada en slope simple. |
+| `--stability-drift-persist-window` | Longitud de cada sub-ventana para regresión LS de persistencia. |
+| `--stability-drift-persist-count` | Cuántas ventanas consecutivas deben superar el threshold para `critical`.
+
+Estructura de `stability_alerts`:
+```json
+{
+  "alerts": {
+    "max_concentration_exceeded": 6.7,
+    "species_Eth_exceeded": {"value": 6.7, "threshold": 5.0},
+    "drift_persist": {"slopes": [0.05, 0.06]}
+  },
+  "severity": "critical"
+}
+```
+`severity` = `warning` si hay un único evento leve, `critical` si múltiples especies exceden, deriva persistente o combinación de eventos. Cuando hay cualquier alerta se marca `stability_ok = False` y bajo `--strict-exit` puede elevar el código (>=3) o 4 si sólo hubo fallback de tier2.
+
+### Ejemplos
+```powershell
+# Adaptación con pesos y speedup mínimo
+python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 12,24 --adaptive-nfe --adaptive-error-weights eth:1,hold:1,drift:0.3,econ:0.1 --adaptive-min-speedup 1.25 --regen-baseline
+
+# Umbrales múltiples + deriva persistente
+python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 24 --adaptive-nfe --stability-species-threshold Eth:5,G:50 --stability-drift-trend-threshold 0.02 --stability-drift-persist-window 4 --stability-drift-persist-count 2
+
+# Fallback estricto
+python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 48 --adaptive-nfe --advanced-fallback --strict-exit
+```
+
+### Interpretación de Exit Codes (strict)
+| Código | Significado |
+|--------|-------------|
+| 0 | Todo OK (baseline dentro de tolerancia y sin alertas) |
+| 1 | Desviaciones vs baseline fuera de tolerancia |
+| 2 | `param_hash` mismatch (regenerar baseline) |
+| 3 | Alertas de estabilidad (warning/critical) |
+| 4 | Se necesitó fallback tier2 aunque sin otras fallas |
+
+La prioridad es incremental: si coexistieran se usa el máximo.
+
+
 ## Logging
 Por defecto nivel INFO a stdout. Para elevar a DEBUG:
 ```python

@@ -1,9 +1,9 @@
 {
-  "hash": "a2f57b61a5ba",
+  "hash": "5393b48f3ad7",
   "config": {
     "args": {
       "log_dir": "logs/fullscale",
-      "horizons": "12,24,48",
+      "horizons": "12,24",
       "nfe_map": null,
       "step_h": 3.0,
       "pred_h": null,
@@ -16,12 +16,15 @@
       "baseline_tol_pct": 5.0,
       "regen_baseline": false,
       "adaptive_nfe": true,
-      "adaptive_nfe_rel_tol": 0.02,
+      "adaptive_nfe_rel_tol": 0.01,
       "adaptive_nfe_min_tol": 0.002,
       "baseline_compare_extended": true,
       "strict_exit": true,
       "advanced_fallback": true,
-      "fallback_pred_scale": 0.6
+      "fallback_pred_scale": 0.6,
+      "stability_max_conc_thresh": 5.0,
+      "stability_drift_trend_window": 4,
+      "stability_drift_trend_threshold": 0.2
     },
     "nfe_default_map": {
       "12": 4,

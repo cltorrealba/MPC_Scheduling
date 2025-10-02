@@ -24,6 +24,9 @@ class HorizonResult:
     adapt_reason: str | None = None
     fallback_tier: int | None = None  # 0 normal,1 nfe-1,2 pred_h reduced
     prediction_h_used: float | None = None
+    stability_alerts: dict | None = None
+    adapt_error_norm: float | None = None
+    adapt_trial_times: dict | None = None  # {'coarse_elapsed':..,'fine_elapsed':..}
 
 BASELINE_FILE = 'logs/fullscale_baseline.json'
 
@@ -178,6 +181,14 @@ def build_parser():
     p.add_argument('--strict-exit', action='store_true', help='Salir con código !=0 si baseline no ok, mismatch hash o instabilidades.')
     p.add_argument('--advanced-fallback', action='store_true', help='Activar fallback de múltiples tiers (nfe-1, reducción de predicción).')
     p.add_argument('--fallback-pred-scale', type=float, default=0.5, help='Factor para reducir predicción en fallback tier2 (ej 0.5 reduce 50%).')
+    p.add_argument('--stability-max-conc-thresh', type=float, default=None, help='Si se especifica, alerta si alguna concentración final supera el umbral.')
+    p.add_argument('--stability-drift-trend-window', type=int, default=3, help='Ventana (steps log) para evaluar tendencia de drift_l2 (sólo readiness).')
+    p.add_argument('--stability-drift-trend-threshold', type=float, default=None, help='Si pendiente media positiva > threshold -> alerta.')
+    p.add_argument('--adaptive-error-weights', type=str, default='eth:1,hold:1,drift:0.5,econ:0.2', help='Pesos para norma ponderada (formato k:v,...)')
+    p.add_argument('--adaptive-min-speedup', type=float, default=1.2, help='Si fine/coarse speedup < valor -> forzar fine.')
+    p.add_argument('--stability-species-threshold', type=str, default=None, help='Mapa especie:valor; activa alerta si final_<sp>_pred excede.')
+    p.add_argument('--stability-drift-persist-window', type=int, default=4, help='Ventana para drift LS regression.')
+    p.add_argument('--stability-drift-persist-count', type=int, default=2, help='# ventanas consecutivas con pendiente>threshold para critical.')
     return p
 
 
@@ -193,6 +204,19 @@ def main():
     }
     cfg_hash = hash_config(cfg)
     (log_dir/'config_snapshot.json').write_text(json.dumps({'hash': cfg_hash, 'config': cfg}, indent=2))
+
+    # Parse adaptive error weights once
+    weight_map = {'eth':1.0,'hold':1.0,'drift':0.5,'econ':0.2}
+    try:
+        if args.adaptive_error_weights:
+            for part in args.adaptive_error_weights.split(','):
+                if not part.strip():
+                    continue
+                k,v = part.split(':')
+                weight_map[k.strip()] = float(v)
+    except Exception:
+        # Fallback to defaults if malformed
+        pass
 
     nfe_map = dict(NFE_DEFAULT_MAP)
     if args.nfe_map:
@@ -264,25 +288,164 @@ def main():
         speedup = None
         if coarse_res.elapsed_s and fine_res.elapsed_s and coarse_res.elapsed_s > 0:
             speedup = fine_res.elapsed_s / coarse_res.elapsed_s
-        metrics = {'rel_eth': rel_eth, 'rel_hold_up': rel_m, 'rel_drift': rel_drift, 'rel_econ': rel_econ, 'worst': worst}
-        if worst <= eff_tol:
+        # Weighted error norm (Euclidean) using provided weights
+        w_eth = weight_map.get('eth',1.0)
+        w_hold = weight_map.get('hold',1.0)
+        w_drift = weight_map.get('drift',0.0)
+        w_econ = weight_map.get('econ',0.0)
+        err_norm = math.sqrt(
+            (w_eth*rel_eth)**2 + (w_hold*rel_m)**2 + (w_drift*rel_drift)**2 + (w_econ*rel_econ)**2
+        )
+        metrics = {
+            'rel_eth': rel_eth, 'rel_hold_up': rel_m, 'rel_drift': rel_drift, 'rel_econ': rel_econ,
+            'worst': worst, 'error_norm': err_norm
+        }
+        coarse_ok = worst <= eff_tol and err_norm <= eff_tol
+        # Speedup gating: require minimum benefit to keep coarse
+        speedup_ok = (speedup is None) or (speedup >= args.adaptive_min_speedup)
+        if coarse_ok and speedup_ok:
             coarse_res.adapt_mode = 'coarse'
             coarse_res.adapt_speedup_ratio = speedup
             coarse_res.adapt_metrics = metrics
             coarse_res.adapt_tol_effective = eff_tol
             coarse_res.adapt_reason = 'coarse_within_tol'
+            coarse_res.adapt_error_norm = err_norm
+            coarse_res.adapt_trial_times = {
+                'coarse_elapsed': coarse_res.elapsed_s,
+                'fine_elapsed': fine_res.elapsed_s
+            }
             results.append(coarse_res)
+        elif coarse_ok and not speedup_ok:
+            # Accept fine due to insufficient speedup
+            fine_res.adapt_mode = 'fine'
+            fine_res.adapt_speedup_ratio = speedup
+            fine_res.adapt_metrics = metrics
+            fine_res.adapt_tol_effective = eff_tol
+            fine_res.adapt_reason = 'coarse_within_tol_low_speedup'
+            fine_res.adapt_error_norm = err_norm
+            fine_res.adapt_trial_times = {
+                'coarse_elapsed': coarse_res.elapsed_s,
+                'fine_elapsed': fine_res.elapsed_s
+            }
+            results.append(fine_res)
         else:
             fine_res.adapt_mode = 'fine'
             fine_res.adapt_speedup_ratio = speedup
             fine_res.adapt_metrics = metrics
             fine_res.adapt_tol_effective = eff_tol
             fine_res.adapt_reason = 'coarse_exceeds_tol'
+            fine_res.adapt_error_norm = err_norm
+            fine_res.adapt_trial_times = {
+                'coarse_elapsed': coarse_res.elapsed_s,
+                'fine_elapsed': fine_res.elapsed_s
+            }
             results.append(fine_res)
 
     baseline_path = pathlib.Path(args.log_dir)/'fullscale_baseline.json'
     current_phash = _parameter_hash()
     baseline_status = compare_with_baseline(results, args.baseline_tol_pct, args.regen_baseline, baseline_path, current_phash, args.baseline_compare_extended)
+
+    # Post-process stability: max concentration, species thresholds, drift trend & persistence (LS regression)
+    if (
+        args.stability_max_conc_thresh or
+        args.stability_drift_trend_threshold is not None or
+        args.stability_species_threshold is not None
+    ):
+        import csv
+        species_thresh = {}
+        if args.stability_species_threshold:
+            try:
+                for part in args.stability_species_threshold.split(','):
+                    if not part.strip():
+                        continue
+                    k,v = part.split(':')
+                    species_thresh[k.strip()] = float(v)
+            except Exception:
+                pass
+        for r in results:
+            alerts = {}
+            severity = 'warning'
+            try:
+                if pathlib.Path(r.csv_path).exists():
+                    rows = list(csv.DictReader(open(r.csv_path, 'r', encoding='utf-8')))
+                    if rows:
+                        last = rows[-1]
+                        # Simple ethanol max concentration proxy
+                        if args.stability_max_conc_thresh:
+                            fe = r.ethanol_final
+                            if fe is not None and fe > args.stability_max_conc_thresh:
+                                alerts['max_concentration_exceeded'] = fe
+                        # Species thresholds (final_<sp>_pred columns)
+                        exceeded_species = []
+                        for sp, thresh in species_thresh.items():
+                            col = f'final_{sp}_pred'
+                            if col in last and last[col] not in (None,''):
+                                try:
+                                    val = float(last[col])
+                                    if val > thresh:
+                                        alerts[f'species_{sp}_exceeded'] = {'value': val, 'threshold': thresh}
+                                        exceeded_species.append(sp)
+                                except:  # noqa
+                                    pass
+                        if len(exceeded_species) > 1:
+                            severity = 'critical'
+                        # Drift trend (simple last window slope)
+                        if args.stability_drift_trend_threshold is not None:
+                            window_simple = max(2, args.stability_drift_trend_window)
+                            drift_vals_simple = []
+                            for row in rows[-window_simple:]:
+                                v = row.get('drift_l2')
+                                if v not in (None,''):
+                                    try:
+                                        drift_vals_simple.append(float(v))
+                                    except: pass
+                            if len(drift_vals_simple) >= 2:
+                                slope_simple = (drift_vals_simple[-1] - drift_vals_simple[0]) / (len(drift_vals_simple)-1)
+                                if slope_simple > args.stability_drift_trend_threshold:
+                                    alerts['drift_trend_slope'] = slope_simple
+                        # Drift persistence via LS regression over windows
+                        if args.stability_drift_trend_threshold is not None:
+                            wlen = max(2, args.stability_drift_persist_window)
+                            needed = wlen * args.stability_drift_persist_count
+                            drift_series = []
+                            for row in rows[-needed:]:
+                                v = row.get('drift_l2')
+                                if v not in (None,''):
+                                    try:
+                                        drift_series.append(float(v))
+                                    except: pass
+                            if len(drift_series) >= needed:
+                                slopes = []
+                                ok_persist = True
+                                for i in range(args.stability_drift_persist_count):
+                                    segment = drift_series[-wlen*(i+1): -wlen*i or None]
+                                    if len(segment) < 2:
+                                        ok_persist = False
+                                        break
+                                    # LS regression slope for segment y vs index
+                                    n = len(segment)
+                                    xs = list(range(n))
+                                    sumx = sum(xs)
+                                    sumy = sum(segment)
+                                    sumx2 = sum(x*x for x in xs)
+                                    sumxy = sum(x*y for x,y in zip(xs, segment))
+                                    denom = n*sumx2 - sumx*sumx
+                                    if denom == 0:
+                                        ok_persist = False
+                                        break
+                                    slope = (n*sumxy - sumx*sumy)/denom
+                                    slopes.append(slope)
+                                    if slope <= args.stability_drift_trend_threshold:
+                                        ok_persist = False
+                                if ok_persist and slopes:
+                                    alerts['drift_persist'] = {'slopes': list(reversed(slopes))}
+                                    severity = 'critical'
+            except Exception as e:
+                alerts['stability_eval_error'] = str(e)
+                severity = 'warning'
+            if alerts:
+                r.stability_alerts = {'alerts': alerts, 'severity': severity}
+                r.stability_ok = False if severity in ('warning','critical') else r.stability_ok
 
     summary = {
         'config_hash': cfg_hash,
@@ -308,6 +471,9 @@ def main():
             exit_code = 1
         if not all(r.stability_ok for r in results):
             exit_code = max(exit_code, 3)
+    # Exit code 4: presence of tier2 fallback if strict
+    if args.strict_exit and exit_code == 0 and any(r.fallback_tier == 2 for r in results):
+        exit_code = 4
     if args.strict_exit and exit_code != 0:
         return exit_code
     return 0

@@ -1,80 +1,61 @@
 {
-  "config_hash": "a2f57b61a5ba",
+  "config_hash": "5393b48f3ad7",
   "results": [
     {
       "horizon_h": 12.0,
-      "nfe": 2,
-      "elapsed_s": 3.3372557163238525,
-      "ethanol_final": 6.679238067965667,
-      "hold_up_final": 999.9991386399734,
+      "nfe": 4,
+      "elapsed_s": 4.561074733734131,
+      "ethanol_final": 6.696637575755619,
+      "hold_up_final": 999.9991390556822,
       "csv_path": "logs\\fullscale\\h12\\rolling_performance_log.csv",
       "status": "ok",
-      "drift_l2_mean": 7.360233952031901,
-      "economic_mean": 0.842129041475527,
-      "stability_ok": true,
-      "adapt_mode": "coarse",
-      "adapt_speedup_ratio": 0.9083860541890978,
+      "drift_l2_mean": 7.3376971122833945,
+      "economic_mean": 0.8446712499964846,
+      "stability_ok": false,
+      "adapt_mode": "fine",
+      "adapt_speedup_ratio": 2.3587297195594266,
       "adapt_metrics": {
         "rel_eth": 0.0025982454019828284,
         "rel_hold_up": 4.157092403310976e-10,
-        "rel_drift": 0.0011973416585780773,
-        "rel_econ": 0.013891967922742228,
-        "worst": 0.013891967922742228
+        "rel_drift": 0.0008710474058156433,
+        "rel_econ": 0.012733352545579682,
+        "worst": 0.012733352545579682
       },
-      "adapt_tol_effective": 0.02,
-      "adapt_reason": "coarse_within_tol",
+      "adapt_tol_effective": 0.01,
+      "adapt_reason": "coarse_exceeds_tol",
       "fallback_tier": 0,
-      "prediction_h_used": 6.0
+      "prediction_h_used": 6.0,
+      "stability_alerts": {
+        "max_concentration_exceeded": 6.696637575755619
+      }
     },
     {
       "horizon_h": 24.0,
       "nfe": 3,
-      "elapsed_s": 4.069850206375122,
+      "elapsed_s": 2.7490618228912354,
       "ethanol_final": 6.699996791603655,
       "hold_up_final": 999.9982761441269,
       "csv_path": "logs\\fullscale\\h24\\rolling_performance_log.csv",
       "status": "ok",
-      "drift_l2_mean": 7.8223820041557905,
-      "economic_mean": 1.1373293912725888,
-      "stability_ok": true,
+      "drift_l2_mean": 7.820830282110444,
+      "economic_mean": 1.1332019536317337,
+      "stability_ok": false,
       "adapt_mode": "coarse",
-      "adapt_speedup_ratio": 1.1210928596045422,
+      "adapt_speedup_ratio": 1.0845516994595419,
       "adapt_metrics": {
         "rel_eth": 2.1813407345344616e-06,
         "rel_hold_up": 1.9361131449718292e-09,
-        "rel_drift": 0.00011104155350863668,
-        "rel_econ": 0.005214642051615732,
-        "worst": 0.005214642051615732
-      },
-      "adapt_tol_effective": 0.01,
-      "adapt_reason": "coarse_within_tol",
-      "fallback_tier": 0,
-      "prediction_h_used": 6.0
-    },
-    {
-      "horizon_h": 48.0,
-      "nfe": 4,
-      "elapsed_s": 5.003957271575928,
-      "ethanol_final": 6.700023108997322,
-      "hold_up_final": 999.9965509071897,
-      "csv_path": "logs\\fullscale\\h48\\rolling_performance_log.csv",
-      "status": "ok",
-      "drift_l2_mean": 7.922826451985935,
-      "economic_mean": 1.2227342895562059,
-      "stability_ok": true,
-      "adapt_mode": "coarse",
-      "adapt_speedup_ratio": 2.3925362912482195,
-      "adapt_metrics": {
-        "rel_eth": 0.0,
-        "rel_hold_up": 0.0,
-        "rel_drift": 0.0003290511561582226,
-        "rel_econ": 5.847761221706179e-11,
-        "worst": 0.0003290511561582226
+        "rel_drift": 8.102129126257441e-05,
+        "rel_econ": 0.004747009627691131,
+        "worst": 0.004747009627691131
       },
       "adapt_tol_effective": 0.005,
       "adapt_reason": "coarse_within_tol",
       "fallback_tier": 0,
-      "prediction_h_used": 6.0
+      "prediction_h_used": 6.0,
+      "stability_alerts": {
+        "max_concentration_exceeded": 6.699996791603655
+      }
     }
   ],
   "baseline": {
@@ -84,9 +65,9 @@
     "param_hash": "6202f75ae7e0"
   },
   "scalability_ratio": {
-    "mean_ratio": 5.110470785035028e-05,
-    "max_ratio": 7.725128972971881e-05
+    "mean_ratio": 6.869913941180265e-05,
+    "max_ratio": 0.00010558043365125302
   },
   "param_hash": "6202f75ae7e0",
-  "timestamp": 1759369739.4676
+  "timestamp": 1759371537.9674554
 }

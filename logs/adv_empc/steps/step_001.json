@@ -1,10 +1,10 @@
 {
   "meta": {
-    "git_commit": "41721ff",
+    "git_commit": "9205da6",
     "git_dirty": true,
     "python_version": "3.10.18",
     "platform": "Windows-10-10.0.19045-SP0",
-    "timestamp_utc": "2025-10-02T01:39:54Z",
+    "timestamp_utc": "2025-10-02T02:40:22Z",
     "mode": "empc_rolling"
   },
   "step_row": {
@@ -14,7 +14,7 @@
     "prediction_h": 4.0,
     "apply_h": 2.0,
     "nfe": 2,
-    "mod_elapsed_s": 0.15685462951660156,
+    "mod_elapsed_s": 0.16228055953979492,
     "predicted_end_h": 6.0,
     "propagation_mode": "final",
     "schedule_horizon_h": 4.0,
@@ -26,7 +26,7 @@
     "productivity_pred": 1.324527468908434,
     "economic_metric": 1.4313758559724963,
     "economic_metric2": 1.4313758559724963,
-    "git_commit": "41721ff",
+    "git_commit": "9205da6",
     "git_dirty": true,
     "python_version": "3.10.18",
     "feasible_flag": 1,
@@ -39,7 +39,15 @@
     "drift_max_abs_avg": 4.2253582139179,
     "drift_l2_cum": 13.975937912598893,
     "drift_max_abs_cum": 8.4507164278358,
-    "drift_alert": null
+    "drift_alert": null,
+    "final_G_pred": 2.8520218629633094,
+    "final_X_pred": 0.15360439819650573,
+    "final_F_pred": 0.00010613431422583591,
+    "final_HMF_pred": 0.004170425631285517,
+    "final_ACT_pred": 0.056234943191016754,
+    "final_Eth_pred": 5.298109875633736,
+    "final_Cell_pred": 1.0000002851500496,
+    "final_CO2_pred": 5.307692835922108
   },
   "raw": {
     "meta": {

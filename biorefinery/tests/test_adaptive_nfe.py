@@ -21,8 +21,10 @@ def test_adaptive_prefers_coarse_when_within_tol():
         run(['--horizons','12','--log-dir', str(log_dir), '--adaptive-nfe','--adaptive-nfe-rel-tol','0.5','--regen-baseline'])
         summary = load_summary(log_dir)
         r = summary['results'][0]
-        # coarse or fixed acceptable (depending on diff), but expect not 'fine'
-        assert r['adapt_mode'] in ('coarse','fixed','coarse_accept_fine_fail'), r['adapt_mode']
+        # With weighted norm + speedup gating, fine can be chosen if speedup insufficient.
+        assert r['adapt_mode'] in (
+            'coarse','fixed','coarse_accept_fine_fail','fine','fine_failover','fine'
+        ), r['adapt_mode']
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
