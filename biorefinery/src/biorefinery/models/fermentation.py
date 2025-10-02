@@ -182,6 +182,23 @@ def build_fermentation_model(
         m.K0X = pe.Param(initialize=1, doc="pH dependency param (X) K0")
         m.K1X = pe.Param(initialize=5.375237819425663, doc="pH dependency param (X) K1")
         m.K2X = pe.Param(initialize=0.009314982725521, doc="pH dependency param (X) K2")
+    # Additional pH dependency & ethanol inhibition parameters for F, HMF, ACT (initial plausible placeholders)
+    m.K0F = pe.Param(initialize=1.0, doc="pH dependency param (F) K0")
+    m.K1F = pe.Param(initialize=5.38, doc="pH dependency param (F) K1")
+    m.K2F = pe.Param(initialize=0.010, doc="pH dependency param (F) K2")
+    m.K0HMF = pe.Param(initialize=1.0, doc="pH dependency param (HMF) K0")
+    m.K1HMF = pe.Param(initialize=5.38, doc="pH dependency param (HMF) K1")
+    m.K2HMF = pe.Param(initialize=0.010, doc="pH dependency param (HMF) K2")
+    m.K0ACT = pe.Param(initialize=1.0, doc="pH dependency param (ACT) K0")
+    m.K1ACT = pe.Param(initialize=5.38, doc="pH dependency param (ACT) K1")
+    m.K2ACT = pe.Param(initialize=0.010, doc="pH dependency param (ACT) K2")
+    # Ethanol inhibition shape parameters for additional routes
+    m.PMP_F = pe.Param(initialize=95.0, doc="Ethanol inhibition saturation (F)")
+    m.gamma_F = pe.Param(initialize=0.9, doc="Ethanol inhibition exponent (F)")
+    m.PMP_HMF = pe.Param(initialize=97.0, doc="Ethanol inhibition saturation (HMF)")
+    m.gamma_HMF = pe.Param(initialize=0.8, doc="Ethanol inhibition exponent (HMF)")
+    m.PMP_ACT = pe.Param(initialize=90.0, doc="Ethanol inhibition saturation (ACT)")
+    m.gamma_ACT = pe.Param(initialize=1.0, doc="Ethanol inhibition exponent (ACT)")
 
     # Feed related variables (always created for backward compatibility; control usage via flags)
     m.F_C5liquid = pe.Var(
@@ -429,41 +446,46 @@ def build_fermentation_model(
 
             m.q_xylose_rate = pe.Constraint(m.t, rule=_q_xylose)
 
-            # Furfural uptake (analogous pattern): self-inhibition + cross inhibitions (using available params)
+            # Furfural uptake (detailed): pH gaussian, self & cross inhibition (G,X), ethanol inhibition
             def _q_furfural(m, t):
                 if t == m.t.first():
                     return pe.Constraint.Skip
-                # Saturation / self & cross inhibition structure (simplified placeholder)
-                # Reusing KI params: KI_F_G (glucose inhibiting F), KI_F_X (xylose inhibiting F), KI_F_S (self)
+                pH_term = m.K0F * pe.exp(-(((m.pH - m.K1F) ** 2) / (2 * (m.K2F ** 2))))
                 sat_self = m.C[t, 'F'] / (m.KI_F_S + m.C[t, 'F'])
                 inhib_G = m.KI_F_G / (m.KI_F_G + m.C[t, 'G'])
                 inhib_X = m.KI_F_X / (m.KI_F_X + m.C[t, 'X'])
-                expr_active = m.qmax_F * m.C[t, 'Cell'] * sat_self * inhib_G * inhib_X
+                eth_ratio_F = (m.C[t, 'Eth'] + m.eps_power) / m.PMP_F
+                inhib_eth = 1 - pe.exp(m.gamma_F * pe.log(eth_ratio_F))
+                expr_active = m.qmax_F * pH_term * m.C[t, 'Cell'] * sat_self * inhib_G * inhib_X * inhib_eth
                 return m.q[t, 'F'] == m.route_config['F'] * expr_active
 
             m.q_furfural_rate = pe.Constraint(m.t, rule=_q_furfural)
 
-            # 5-HMF uptake with inhibition by furfural and self inhibition (placeholders based on parameters present)
+            # 5-HMF uptake: pH, self inhibition, inhibition by F, G, X, ethanol
             def _q_hmf(m, t):
                 if t == m.t.first():
                     return pe.Constraint.Skip
+                pH_term = m.K0HMF * pe.exp(-(((m.pH - m.K1HMF) ** 2) / (2 * (m.K2HMF ** 2))))
                 self_term = m.C[t, 'HMF'] / (m.KIP_HMF + m.C[t, 'HMF'])
-                # Prefer dedicated furfural inhibition constant if present (KI_HMF_F), otherwise reuse KI_HMF_G as placeholder
-                inhib_param = getattr(m, 'KI_HMF_F', None)
-                if inhib_param is None:
-                    inhib_param = m.KI_HMF_G
-                inhib_F = inhib_param / (inhib_param + m.C[t, 'F'])
-                expr_active = m.qmax_HMF * m.C[t, 'Cell'] * self_term * inhib_F
+                inhib_Ffur = (getattr(m, 'KI_HMF_F', m.KI_HMF_G)) / (getattr(m, 'KI_HMF_F', m.KI_HMF_G) + m.C[t, 'F'])
+                inhib_G = m.KI_HMF_G / (m.KI_HMF_G + m.C[t, 'G'])
+                inhib_X = m.KI_HMF_X / (m.KI_HMF_X + m.C[t, 'X'])
+                eth_ratio = (m.C[t, 'Eth'] + m.eps_power) / m.PMP_HMF
+                inhib_eth = 1 - pe.exp(m.gamma_HMF * pe.log(eth_ratio))
+                expr_active = m.qmax_HMF * pH_term * m.C[t, 'Cell'] * self_term * inhib_Ffur * inhib_G * inhib_X * inhib_eth
                 return m.q[t, 'HMF'] == m.route_config['HMF'] * expr_active
 
             m.q_hmf_rate = pe.Constraint(m.t, rule=_q_hmf)
 
-            # Acetate uptake with self inhibition (KIP_ACT). Additional inhibitions could be added later.
+            # Acetate uptake: pH + self inhibition + ethanol inhibition
             def _q_acetate(m, t):
                 if t == m.t.first():
                     return pe.Constraint.Skip
+                pH_term = m.K0ACT * pe.exp(-(((m.pH - m.K1ACT) ** 2) / (2 * (m.K2ACT ** 2))))
                 self_term = m.C[t, 'ACT'] / (m.KIP_ACT + m.C[t, 'ACT'])
-                expr_active = m.qmax_ATC * m.C[t, 'Cell'] * self_term
+                eth_ratio = (m.C[t, 'Eth'] + m.eps_power) / m.PMP_ACT
+                inhib_eth = 1 - pe.exp(m.gamma_ACT * pe.log(eth_ratio))
+                expr_active = m.qmax_ATC * pH_term * m.C[t, 'Cell'] * self_term * inhib_eth
                 return m.q[t, 'ACT'] == m.route_config['ACT'] * expr_active
 
             m.q_acetate_rate = pe.Constraint(m.t, rule=_q_acetate)

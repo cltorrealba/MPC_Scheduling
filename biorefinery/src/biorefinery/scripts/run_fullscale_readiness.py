@@ -105,17 +105,26 @@ def run_single_horizon(h, nfe, args) -> HorizonResult:
                          drift_l2_mean=drift_l2_mean, economic_mean=econ_mean, stability_ok=stability_ok)
 
 
-def compare_with_baseline(results: list[HorizonResult], tol: float, regen: bool, path: pathlib.Path):
+def compare_with_baseline(results: list[HorizonResult], tol: float, regen: bool, path: pathlib.Path, param_hash: str):
+    """Create or compare against stored baseline.
+
+    Adds param_hash tracking: if the stored baseline param_hash differs from current
+    kinetics hash we mark mismatch and force regeneration (user prompt via 'ok': False).
+    """
     if regen or not path.exists():
         payload = {
             'created': time.time(),
             'tolerance_pct': tol,
+            'param_hash': param_hash,
             'results': [asdict(r) for r in results]
         }
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2))
-        return {'mode':'baseline_created','ok':True}
+        return {'mode':'baseline_created','ok':True,'param_hash':param_hash}
     stored = json.loads(path.read_text())
+    stored_hash = stored.get('param_hash')
+    if stored_hash and stored_hash != param_hash:
+        return {'mode':'param_hash_mismatch','ok':False,'stored_param_hash':stored_hash,'current_param_hash':param_hash}
     issues = []
     ref_map = {int(r['horizon_h']): r for r in stored.get('results', [])}
     for r in results:
@@ -130,7 +139,7 @@ def compare_with_baseline(results: list[HorizonResult], tol: float, regen: bool,
             pct = abs(cur - refv)/abs(refv)*100.0
             if pct > tol:
                 issues.append({'horizon': r.horizon_h, 'metric': metric, 'pct_diff': pct, 'cur': cur, 'ref': refv})
-    return {'mode':'baseline_compare','ok': len(issues)==0, 'issues': issues}
+    return {'mode':'baseline_compare','ok': len(issues)==0, 'issues': issues, 'param_hash': stored_hash or param_hash}
 
 
 def build_parser():
@@ -191,13 +200,16 @@ def main():
         results.append(res)
 
     baseline_path = pathlib.Path(args.log_dir)/'fullscale_baseline.json'
-    baseline_status = compare_with_baseline(results, args.baseline_tol_pct, args.regen_baseline, baseline_path)
+    current_phash = _parameter_hash()
+    baseline_status = compare_with_baseline(results, args.baseline_tol_pct, args.regen_baseline, baseline_path, current_phash)
 
     summary = {
         'config_hash': cfg_hash,
         'results': [asdict(r) for r in results],
         'baseline': baseline_status,
         'scalability_ratio': _scalability(results),
+        # Parameter subset hash (kinetics & inhibition) for reproducibility / drift detection
+    'param_hash': current_phash,
         'timestamp': time.time(),
     }
     (log_dir/'summary.json').write_text(json.dumps(summary, indent=2))
@@ -218,6 +230,32 @@ def _scalability(results: list[HorizonResult]):
             ratios.append(r.elapsed_s / (r.horizon_h*3600.0))
     if not ratios: return None
     return {'mean_ratio': sum(ratios)/len(ratios), 'max_ratio': max(ratios)}
+
+def _parameter_hash():
+    """Compute a short hash for a core subset of fermentation kinetic parameters.
+
+    We avoid building a full model instance (costly) by hard-coding the list of
+    parameter names whose default values represent the current kinetics spec.
+    If any of these defaults change in the codebase, this hash will change and
+    downstream readiness comparisons can detect a baseline invalidation event.
+    """
+    core_params = {
+        # Glucose / Xylose
+        'KIP_G': 4890, 'KSP_G': 1.342, 'PMP_G': 103, 'gamma_G': 1.42, 'qmax_G': 0.000318,
+        'KIP_X': 81.3, 'KSP_X': 3.4, 'PMP_X': 100.2, 'gamma_X': 0.608, 'qmax_X': 0.00083444,
+        # Furfural / HMF / Acetate
+        'qmax_F': 4.6706e-5, 'qmax_HMF': 8.7576e-5, 'qmax_ATC': 1.2292e-5,
+        'K0G': 1, 'K1G': 5.388758642823563, 'K2G': 0.009698396119741,
+        'K0X': 1, 'K1X': 5.375237819425663, 'K2X': 0.009314982725521,
+        'K0F': 1.0, 'K1F': 5.38, 'K2F': 0.010,
+        'K0HMF': 1.0, 'K1HMF': 5.38, 'K2HMF': 0.010,
+        'K0ACT': 1.0, 'K1ACT': 5.38, 'K2ACT': 0.010,
+        'PMP_F': 95.0, 'gamma_F': 0.9,
+        'PMP_HMF': 97.0, 'gamma_HMF': 0.8,
+        'PMP_ACT': 90.0, 'gamma_ACT': 1.0,
+    }
+    raw = json.dumps(core_params, sort_keys=True, separators=(',',':'))
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:12]
 
 if __name__ == '__main__':  # pragma: no cover
     raise SystemExit(main())

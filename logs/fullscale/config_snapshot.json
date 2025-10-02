@@ -1,5 +1,5 @@
 {
-  "hash": "03d1010e63b2",
+  "hash": "31bfafec67d9",
   "config": {
     "args": {
       "log_dir": "logs/fullscale",
@@ -11,7 +11,7 @@
       "econ_lambda": 0.1,
       "econ_lambda2": 0.0,
       "seed": 123,
-      "auto": true,
+      "auto": false,
       "feedback": "all_species",
       "baseline_tol_pct": 5.0,
       "regen_baseline": false
