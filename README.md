@@ -168,8 +168,35 @@ python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons
 | 2 | `param_hash` mismatch (regenerar baseline) |
 | 3 | Alertas de estabilidad (warning/critical) |
 | 4 | Se necesitó fallback tier2 aunque sin otras fallas |
+| 5 | Mismatch de configuración congelada (`--config-freeze`) |
 
 La prioridad es incremental: si coexistieran se usa el máximo.
+
+### Congelación de Configuración (Config Freeze)
+Para garantizar reproducibilidad entre ejecuciones de readiness se puede activar:
+
+| Flag | Descripción |
+|------|-------------|
+| `--config-freeze` | Habilita verificación de hash sobre un subconjunto de flags. |
+| `--config-freeze-keys` | Lista de flags (nombres CLI) a incluir en el hash (default incluye horizontes, tolerancias y parámetros adaptativos). |
+
+Funcionamiento:
+1. Primera ejecución con `--config-freeze --regen-baseline` genera `config_freeze.json` con snapshot y hash.
+2. Ejecuciones posteriores recomputan el hash; si difiere y `--strict-exit` está activo -> exit code 5.
+3. El resumen (`summary.json`) incluye `config_freeze.mismatch` con hashes para auditoría.
+
+Ejemplo:
+```powershell
+python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 12,24 --adaptive-nfe --config-freeze --regen-baseline
+# Cambiamos un flag congelado
+python biorefinery/src/biorefinery/scripts/run_fullscale_readiness.py --horizons 24 --adaptive-nfe --config-freeze --strict-exit
+```
+
+Para extender la lista:
+```powershell
+--config-freeze-keys "horizons,step_h,pred_h,adaptive-nfe,adaptive-nfe-rel-tol,feedback"
+```
+
 
 
 ## Logging

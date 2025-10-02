@@ -189,6 +189,9 @@ def build_parser():
     p.add_argument('--stability-species-threshold', type=str, default=None, help='Mapa especie:valor; activa alerta si final_<sp>_pred excede.')
     p.add_argument('--stability-drift-persist-window', type=int, default=4, help='Ventana para drift LS regression.')
     p.add_argument('--stability-drift-persist-count', type=int, default=2, help='# ventanas consecutivas con pendiente>threshold para critical.')
+    # Config freeze: if provided we compute a hash of selected flags and compare to baseline stored value
+    p.add_argument('--config-freeze', action='store_true', help='Congela configuración: compara hash de flags clave contra baseline y falla si difiere.')
+    p.add_argument('--config-freeze-keys', type=str, default='horizons,step_h,pred_h,adaptive-nfe,adaptive-nfe-rel-tol,adaptive-error-weights,adaptive-min-speedup,feedback,econ-lambda,econ-lambda2', help='Lista separada por comas de flags a incluir en hash de freeze.')
     return p
 
 
@@ -345,6 +348,30 @@ def main():
     current_phash = _parameter_hash()
     baseline_status = compare_with_baseline(results, args.baseline_tol_pct, args.regen_baseline, baseline_path, current_phash, args.baseline_compare_extended)
 
+    # Config freeze logic: build deterministic dict of selected keys
+    freeze_hash = None
+    freeze_mismatch = None
+    freeze_keys = []
+    if args.config_freeze:
+        raw_keys = [k.strip() for k in (args.config_freeze_keys or '').split(',') if k.strip()]
+        # Map argparse dest names: replace dashes with underscores
+        freeze_keys = raw_keys
+        snapshot = {}
+        for k in raw_keys:
+            dest = k.replace('-', '_')
+            if hasattr(args, dest):
+                snapshot[k] = getattr(args, dest)
+        freeze_hash = hash_config(snapshot)
+        # Store or compare in a small sidecar file under log_dir
+        freeze_path = pathlib.Path(args.log_dir)/'config_freeze.json'
+        if args.regen_baseline or not freeze_path.exists():
+            freeze_path.write_text(json.dumps({'hash': freeze_hash, 'keys': freeze_keys, 'snapshot': snapshot}, indent=2))
+        else:
+            stored = json.loads(freeze_path.read_text())
+            stored_hash = stored.get('hash')
+            if stored_hash != freeze_hash:
+                freeze_mismatch = {'stored_hash': stored_hash, 'current_hash': freeze_hash, 'keys': freeze_keys}
+
     # Post-process stability: max concentration, species thresholds, drift trend & persistence (LS regression)
     if (
         args.stability_max_conc_thresh or
@@ -453,7 +480,12 @@ def main():
         'baseline': baseline_status,
         'scalability_ratio': _scalability(results),
         # Parameter subset hash (kinetics & inhibition) for reproducibility / drift detection
-    'param_hash': current_phash,
+        'param_hash': current_phash,
+        'config_freeze': {
+            'enabled': bool(args.config_freeze),
+            'freeze_hash': freeze_hash,
+            'mismatch': freeze_mismatch
+        } if args.config_freeze else None,
         'timestamp': time.time(),
     }
     (log_dir/'summary.json').write_text(json.dumps(summary, indent=2))
@@ -474,6 +506,10 @@ def main():
     # Exit code 4: presence of tier2 fallback if strict
     if args.strict_exit and exit_code == 0 and any(r.fallback_tier == 2 for r in results):
         exit_code = 4
+    # Exit code 5 reserved for config freeze mismatch
+    if args.strict_exit and exit_code == 0 and freeze_mismatch:
+        print('READINESS: CONFIG FREEZE MISMATCH (flags cambiaron).')
+        exit_code = 5
     if args.strict_exit and exit_code != 0:
         return exit_code
     return 0
