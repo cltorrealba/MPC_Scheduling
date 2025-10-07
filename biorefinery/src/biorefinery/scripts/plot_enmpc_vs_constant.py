@@ -6,8 +6,9 @@ Usage example:
 
 Generates PNGs:
  - concentrations_key.png (G, X, Eth, Cell, CO2)
+ - concentrations_subplots.png (un subplot por especie)
  - hold_up.png
- - controls.png
+ - controls.png (dos subplots: F_liquified_fibers y F_C5liquid)
  - economic_metric.png (iteration-wise)
 """
 from __future__ import annotations
@@ -60,24 +61,51 @@ def plot_hold_up(en, ct, outdir):
 
 
 def plot_controls(en, ct, outdir):
-    # Reconstruct applied control step series from iteration records
-    def extract_control(run):
-        steps = []
+    # Prefer full horizon control_series if available; fallback to iteration steps
+    def clamp_nonneg(vals, tol=1e-8):
+        return [v if v is None else (0.0 if v < 0 and v > -tol else (v if v >= 0 else 0.0)) for v in vals]
+
+    def from_control_series(run):
+        traj = run.get('trajectory', {})
+        if 'control_series' in traj and 'time_s' in traj:
+            t = [x/3600.0 for x in traj['time_s']]
+            series = traj['control_series']
+            ff = clamp_nonneg(series.get('F_liquified_fibers', []))
+            fc5 = clamp_nonneg(series.get('F_C5liquid', []))
+            if len(ff) == len(t) and len(fc5) == len(t):
+                return t, ff, fc5
+        return None
+
+    def from_records(run):
         t = []
-        for rec in run['records']:
+        ff = []
+        fc5 = []
+        for rec in run.get('records', []):
             mid = 0.5*(rec['t_start_s']+rec['t_end_s'])/3600.0
             t.append(mid)
-            steps.append(rec['applied_control']['F_liquified_fibers'])
-        return t, steps
-    t_en, u_en = extract_control(en)
-    t_ct, u_ct = extract_control(ct)
-    plt.figure(figsize=(7,4))
-    plt.step(t_en, u_en, where='mid', label='Fibers ENMPC')
-    plt.step(t_ct, u_ct, where='mid', linestyle='--', label='Fibers Const')
-    # (Optional future: add second axis for C5 if policy diverges)
-    plt.xlabel('Time [h]')
-    plt.ylabel('F_liquified_fibers [kg/s]')
-    plt.legend()
+            u = rec.get('applied_control', {})
+            ff.append(float(u.get('F_liquified_fibers', 0.0)))
+            fc5.append(float(u.get('F_C5liquid', 0.0)))
+        return t, ff, fc5
+
+    en_data = from_control_series(en) or from_records(en)
+    ct_data = from_control_series(ct) or from_records(ct)
+    t_en, ff_en, fc5_en = en_data
+    t_ct, ff_ct, fc5_ct = ct_data
+
+    fig, axes = plt.subplots(1, 2, figsize=(12,4), sharex=True)
+    axes[0].step(t_en, ff_en, where='post', label='Fibers ENMPC')
+    axes[0].step(t_ct, ff_ct, where='post', linestyle='--', label='Fibers Const')
+    axes[0].set_ylabel('F_liquified_fibers [kg/s]')
+    axes[0].set_xlabel('Time [h]')
+    axes[0].legend()
+
+    axes[1].step(t_en, fc5_en, where='post', label='C5 ENMPC')
+    axes[1].step(t_ct, fc5_ct, where='post', linestyle='--', label='C5 Const')
+    axes[1].set_ylabel('F_C5liquid [kg/s]')
+    axes[1].set_xlabel('Time [h]')
+    axes[1].legend()
+
     plt.tight_layout()
     plt.savefig(os.path.join(outdir,'controls.png'), dpi=140)
     plt.close()
@@ -118,6 +146,36 @@ def main():
     ct = _load(args.constant)
     os.makedirs(args.outdir, exist_ok=True)
     plot_concentrations(en, ct, args.outdir)
+    # Additional subplot view: one subplot per species
+    try:
+        species_keys = sorted(set(list(en['trajectory']['species'].keys()) + list(ct['trajectory']['species'].keys())))
+        n = len(species_keys)
+        ncols = 3 if n >= 3 else n
+        nrows = math.ceil(n / max(1, ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
+        t_en = [x/3600.0 for x in en['trajectory']['time_s']]
+        t_ct = [x/3600.0 for x in ct['trajectory']['time_s']]
+        for idx, sp in enumerate(species_keys):
+            r = idx // ncols
+            c = idx % ncols
+            ax = axes[r][c]
+            if sp in en['trajectory']['species']:
+                ax.plot(t_en, en['trajectory']['species'][sp], label=f"ENMPC")
+            if sp in ct['trajectory']['species']:
+                ax.plot(t_ct, ct['trajectory']['species'][sp], '--', label=f"Const")
+            ax.set_title(sp)
+            ax.set_xlabel('Time [h]')
+            ax.set_ylabel('[g/kg]')
+            ax.legend(fontsize='small')
+        # Hide any empty subplots
+        for k in range(n, nrows*ncols):
+            r = k // ncols; c = k % ncols
+            axes[r][c].axis('off')
+        plt.tight_layout()
+        plt.savefig(os.path.join(args.outdir, 'concentrations_subplots.png'), dpi=140)
+        plt.close()
+    except Exception:
+        pass
     plot_hold_up(en, ct, args.outdir)
     plot_controls(en, ct, args.outdir)
     plot_economic_metric(en, ct, args.outdir)

@@ -39,6 +39,7 @@ def build_fermentation_model(
     max_concentration: float = 200.0,
     min_hold_up: float = 100.0,
     rate_scale: float = 1.0,
+    Mmax: Optional[float] = None,
 ) -> pe.ConcreteModel:
     """Create a minimal fermentation Pyomo model with optional kinetics and initial conditions.
 
@@ -245,6 +246,14 @@ def build_fermentation_model(
     #    balances (M*dC/dt ~ 0) and led to large mass_balance residuals hidden in slack.
     # These defaults are user-configurable via build_fermentation_model(max_concentration=..., min_hold_up=...).
     m.C = pe.Var(m.t, m.j, initialize=0, within=pe.NonNegativeReals, bounds=(0, max_concentration))
+    # Allow overriding maximum hold-up if provided
+    if 'Mmax' not in m.component_map(pe.Param):
+        m.Mmax = pe.Param(initialize=220000, doc="Maximum hold up [kg]")
+    if Mmax is not None:
+        try:
+            m.Mmax.set_value(float(Mmax))
+        except Exception:
+            pass
     m.M = pe.Var(m.t, initialize=1000.0, within=pe.NonNegativeReals, bounds=(min_hold_up, m.Mmax))
 
     # Apply initial concentrations if provided

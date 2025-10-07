@@ -47,6 +47,7 @@ def _build_model(args, current_start_s: float, init_conc: dict, init_hold_up: fl
         max_concentration=getattr(args,'max_concentration',200.0),
         min_hold_up=getattr(args,'min_hold_up',100.0),
         rate_scale=getattr(args,'rate_scale',1.0),
+        Mmax=getattr(args,'max_hold_up', None),
     )
     # Optional monotonic hold-up (non-decreasing) to avoid spurious solver-induced drops
     if getattr(args,'enforce_monotonic_m', False) and hasattr(m,'M'):
@@ -63,15 +64,21 @@ def _build_model(args, current_start_s: float, init_conc: dict, init_hold_up: fl
     if hasattr(m, 'M0'):
         m.M0.set_value(init_hold_up)
     first_t = m.t.first()
-    if current_start_s > 0:
-        for sp, val in init_conc.items():
-            if sp in m.j:
+    # Siempre fijar condiciones iniciales en el primer punto del horizonte
+    for sp, val in init_conc.items():
+        if sp in m.j:
+            try:
                 m.C[first_t, sp].fix(val)
+            except Exception:
+                pass
+    try:
         m.M[first_t].fix(init_hold_up)
+    except Exception:
+        pass
     return m
 
 
-def _apply_objective(m, economic: bool, exact: bool):
+def _apply_objective(m, economic: bool, exact: bool, *, maximize_ethanol_mass: bool = False, legacy_economic: bool = False):
     # Remove existing objective to avoid replacement warning
     if hasattr(m, 'obj'):
         try:
@@ -79,10 +86,19 @@ def _apply_objective(m, economic: bool, exact: bool):
         except Exception:
             pass
     tL = m.t.last()
-    if economic and exact:
+    if legacy_economic:
+        # Align with legacy sign convention: minimize (50*Cell0 - 5*EthMass)
+        cell0 = m.C[m.t.first(), 'Cell']
+        m.obj = pe.Objective(expr=(50.0 * cell0 - 5.0 * m.C[tL, 'Eth'] * m.M[tL]), sense=pe.minimize)
+    elif maximize_ethanol_mass:
+        # Maximize Ethanol mass at end: maximize C_Eth * M
+        m.obj = pe.Objective(expr=m.C[tL, 'Eth'] * m.M[tL], sense=pe.maximize)
+    elif economic and exact:
+        # Historical placeholder (kept for backward compat)
         cell0 = m.C[m.t.first(), 'Cell']
         m.obj = pe.Objective(expr=-(50.0 * cell0 - 5.0 * m.C[tL, 'Eth'] * m.M[tL]), sense=pe.minimize)
     elif economic:
+        # Old surrogate minimized EthMass (counter to intuition); prefer maximize_ethanol_mass
         m.obj = pe.Objective(expr=5.0 * m.C[tL, 'Eth'] * m.M[tL], sense=pe.minimize)
     else:
         m.obj = pe.Objective(expr=m.C[tL, 'Eth'], sense=pe.maximize)
@@ -217,6 +233,7 @@ def _apply_warm_start(m, snapshot):
 
 
 def run_enmpc(args):
+    # Pick solver lazily; in constant-policy we also need to solve to propagate states
     solver_name = None if args.constant_policy else _pick_solver(args.solver)
     total_time_s = args.total_time_h * 3600.0
     step_s = args.step_time_h * 3600.0
@@ -309,7 +326,30 @@ def run_enmpc(args):
         if (k - start_idx) >= max_new:
             break
         m = _build_model(args, current_time_s, init_conc, init_hold_up)
-        apply_feed_profile(m, DEFAULT_PHASES, override_existing=True)
+        # Apply feed profile with optional global scaling
+        if getattr(args,'feed_scale', 1.0) != 1.0:
+            phases = []
+            for ph in DEFAULT_PHASES:
+                from biorefinery.feeds.profile import FeedPhase
+                phases.append(FeedPhase(ph.name, ph.t_start_h, ph.t_end_h,
+                                        ph.F_liquified_fibers * args.feed_scale,
+                                        ph.F_C5liquid * args.feed_scale))
+            apply_feed_profile(m, phases, override_existing=True)
+        else:
+            apply_feed_profile(m, DEFAULT_PHASES, override_existing=True)
+            # Optional piecewise-constant controls: fix all but first or enforce equality between points
+            if getattr(args,'constant_controls', False):
+                try:
+                    first = m.t.first()
+                    for tau in m.t:
+                        if tau is first:
+                            continue
+                        if hasattr(m,'F_C5liquid'):
+                            m.F_C5liquid[tau].fix(pe.value(m.F_C5liquid[first]))
+                        if hasattr(m,'F_liquified_fibers'):
+                            m.F_liquified_fibers[tau].fix(pe.value(m.F_liquified_fibers[first]))
+                except Exception:
+                    pass
         # (1) Zero-fix of q/R at initial time to avoid large unconstrained initial values when skipping first-point kinetics
         tau0 = m.t.first()
         if (getattr(args,'constant_hold_up', False) or getattr(args,'mass_balance_slack', False)) and hasattr(m,'q'):
@@ -391,9 +431,67 @@ def run_enmpc(args):
                 if sp in m.Cin:
                     m.Cin[sp].set_value(val)
         if args.constant_policy:
-            status = 'ConstantPolicy'
+            # Constant-policy benchmark: fix control trajectories to their current values
+            # (from phase profile or last applied control) and SOLVE the DAE once to simulate.
+            for tau in m.t:
+                if hasattr(m, 'F_liquified_fibers'):
+                    v = m.F_liquified_fibers[tau]
+                    if not v.fixed:
+                        v.fix(pe.value(v))
+                if hasattr(m, 'F_C5liquid'):
+                    v2 = m.F_C5liquid[tau]
+                    if not v2.fixed:
+                        v2.fix(pe.value(v2))
+            # Add a simple objective to make the NLP well-posed (maximize end Eth)
+            _apply_objective(m, economic=False, exact=False, maximize_ethanol_mass=getattr(args,'maximize_ethanol_mass', False), legacy_economic=getattr(args,'legacy_economic_objective', False))
+            # Inject slack penalty if present AFTER objective creation
+            if getattr(args,'mass_balance_slack', False) and hasattr(m,'slack_M') and hasattr(m,'mass_balance_slack_weight'):
+                try:
+                    base_expr = m.obj.expr
+                    penalty = m.mass_balance_slack_weight * sum(m.slack_M[t]**2 for t in m.t)
+                    m.del_component(m.obj)
+                    m.obj = pe.Objective(expr=base_expr + penalty, sense=pe.minimize if False else m.obj.sense)
+                except Exception:
+                    pass
+            # Optional feasibility pre-pass: freeze kinetics (q,R) at 0, maintain fixed feeds
+            prepass_status = None
+            if getattr(args, 'feas_prepass', False):
+                solver_name = _pick_solver(args.solver)
+                sf_pre = pe.SolverFactory(solver_name)
+                frozen_items = []
+                try:
+                    if hasattr(m, 'q'):
+                        for idx in m.q:
+                            var = m.q[idx]
+                            if not var.fixed:
+                                var.set_value(0.0)
+                                var.fix(0.0)
+                                frozen_items.append(var)
+                    if hasattr(m, 'R'):
+                        for idx in m.R:
+                            var = m.R[idx]
+                            if not var.fixed:
+                                var.set_value(0.0)
+                                var.fix(0.0)
+                                frozen_items.append(var)
+                    try:
+                        pres = sf_pre.solve(m, tee=False)
+                        prepass_status = str(pres.solver.termination_condition)
+                    except Exception as _e:
+                        prepass_status = f"error:{_e.__class__.__name__}"
+                finally:
+                    for var in frozen_items:
+                        if var.fixed:
+                            try:
+                                var.unfix()
+                            except Exception:
+                                pass
+            solver_name = _pick_solver(args.solver)
+            sf = pe.SolverFactory(solver_name)
+            res = sf.solve(m, tee=args.tee)
+            status = f"ConstantPolicy:{str(res.solver.termination_condition)}"
         else:
-            _apply_objective(m, args.economic_objective, args.economic_objective_exact)
+            _apply_objective(m, args.economic_objective, args.economic_objective_exact, maximize_ethanol_mass=getattr(args,'maximize_ethanol_mass', False), legacy_economic=getattr(args,'legacy_economic_objective', False))
             sf = pe.SolverFactory(solver_name)
             prepass_status = None
             if getattr(args, 'feas_prepass', False):
@@ -461,33 +559,41 @@ def run_enmpc(args):
             res = sf.solve(m, tee=args.tee)
             status = str(res.solver.termination_condition)
         # Compute detailed constraint violation diagnostic
+        # Skip when running constant-policy (no solver called), to avoid evaluating
+        # expressions with uninitialized DerivativeVar values.
         max_con_violation = None
         detailed_violations = []
-        try:
-            viol = 0.0
-            for c in m.component_data_objects(pe.Constraint, active=True):
-                if c.body is None:
-                    continue
-                val = pe.value(c.body)
-                lb_vi = ub_vi = 0.0
-                if c.has_lb():
-                    lb_vi = (c.lower() - val) if val < c.lower() else 0.0
-                if c.has_ub():
-                    ub_vi = (val - c.upper()) if val > c.upper() else 0.0
-                cv = max(lb_vi, ub_vi)
-                if cv > 0:
-                    detailed_violations.append((cv, c.name))
-                viol = max(viol, cv)
-            detailed_violations.sort(reverse=True, key=lambda x: x[0])
-            max_con_violation = float(viol)
-        except Exception:
-            max_con_violation = None
-            detailed_violations = []
-        # Simple surrogate economic metric: final ethanol mass (concentration * hold-up)
+        if not args.constant_policy:
+            try:
+                viol = 0.0
+                for c in m.component_data_objects(pe.Constraint, active=True):
+                    if c.body is None:
+                        continue
+                    val = pe.value(c.body)
+                    lb_vi = ub_vi = 0.0
+                    if c.has_lb():
+                        lb_vi = (c.lower() - val) if val < c.lower() else 0.0
+                    if c.has_ub():
+                        ub_vi = (val - c.upper()) if val > c.upper() else 0.0
+                    cv = max(lb_vi, ub_vi)
+                    if cv > 0:
+                        detailed_violations.append((cv, c.name))
+                    viol = max(viol, cv)
+                detailed_violations.sort(reverse=True, key=lambda x: x[0])
+                max_con_violation = float(viol)
+            except Exception:
+                max_con_violation = None
+                detailed_violations = []
+        # Economic metrics
         try:
             econ_metric = float(pe.value(m.C[m.t.last(),'Eth']) * pe.value(m.M[m.t.last()]))
         except Exception:
             econ_metric = 0.0
+        objective_value = None
+        try:
+            objective_value = float(pe.value(m.obj)) if hasattr(m,'obj') else None
+        except Exception:
+            objective_value = None
         # Compute Fin average & delta M for diagnostics
         avg_Fin = None
         delta_M = None
@@ -603,6 +709,7 @@ def run_enmpc(args):
             'prepass_status': prepass_status if not args.constant_policy and getattr(args,'feas_prepass', False) else None,
             'applied_control': applied,
             'economic_metric': econ_metric,
+            'economic_objective_value': objective_value,
             'avg_Fin': avg_Fin,
             'delta_M': delta_M,
             'max_mass_slack': (max(abs(float(pe.value(m.slack_M[t]))) for t in m.t) if getattr(args,'mass_balance_slack', False) and hasattr(m,'slack_M') else None),
@@ -796,11 +903,16 @@ def parse_args():
     p.add_argument('--detailed', action='store_true', help='Use detailed kinetics')
     p.add_argument('--economic-objective', action='store_true', help='Use economic metric surrogate objective')
     p.add_argument('--economic-objective-exact', action='store_true', help='Use exact symbolic economic objective instead of surrogate (implies --economic-objective)')
+    p.add_argument('--maximize-ethanol-mass', action='store_true', help='Maximizar masa de etanol al final del horizonte (C_Eth * M)')
+    p.add_argument('--legacy-economic-objective', action='store_true', help='Usar objetivo del legacy: minimizar (50*Cell0 - 5*EthMass)')
     p.add_argument('--constant-policy', action='store_true', help='Skip optimization (benchmark)')
+    p.add_argument('--constant-controls', action='store_true', help='Mantener controles constantes en el horizonte (piecewise-constant)')
     p.add_argument('--constant-hold-up', dest='constant_hold_up', action='store_true', help='Mantener M(t) constante: fija M, Fin y feeds a 0 y desactiva mass_balance')
     p.add_argument('--max-concentration', type=float, default=200.0, help='Límite superior para concentraciones (bound en C)')
     p.add_argument('--min-hold-up', type=float, default=100.0, help='Límite inferior para M (evita colapso numérico)')
+    p.add_argument('--max-hold-up', type=float, default=None, help='Límite superior para M (cap de volumen útil)')
     p.add_argument('--rate-scale', type=float, default=1.0, help='Factor de normalización conceptual para tasas (placeholder; afecta meta hashing)')
+    p.add_argument('--feed-scale', type=float, default=1.0, help='Factor para escalar todos los caudales de alimentación del perfil por defecto')
     p.add_argument('--enforce-monotonic-m', action='store_true', help='Imponer M(t) monótonamente no decreciente en el horizonte')
     p.add_argument('--mass-balance-slack', action='store_true', help='Reformular mass_balance con variable slack_M penalizada (diagnóstico)')
     p.add_argument('--mass-balance-slack-weight', type=float, default=1000.0, help='Peso cuadrático para penalización de slack_M^2')
@@ -831,10 +943,18 @@ def main():
     if args.economic_objective_exact:
         args.economic_objective = True
     res = run_enmpc(args)
+    final_ethanol_mass = None
+    if res['records']:
+        last = res['records'][-1]
+        try:
+            final_ethanol_mass = float(last['realized_end_state']['C']['Eth']) * float(last['realized_end_state']['M'])
+        except Exception:
+            final_ethanol_mass = None
     print(json.dumps({'summary': {
         'iterations': len(res['records']),
         'final_ethanol_conc': res['records'][-1]['ethanol_conc_end'] if res['records'] else None,
         'final_hold_up': res['records'][-1]['hold_up_end'] if res['records'] else None,
+        'final_ethanol_mass': final_ethanol_mass,
     }}, indent=2))
     return 0
 
